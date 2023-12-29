@@ -297,7 +297,7 @@ def manually_vet_matches():
     lib_old = _unpickle(PATH_PICKLE_LIB_OLD, dict())
     lib_new = _unpickle(PATH_PICKLE_LIB_NEW, dict())
 
-    considerable = list(filter(lambda m: not m.manually_scored, matches.values()))
+    considerable = list(filter(lambda m: not m.manually_scored and m.score < THRESHOLD_CONFIDENT, matches.values()))
     considerable = sorted(considerable, key=lambda m: m.sig())
 
     i = 0
