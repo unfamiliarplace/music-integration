@@ -3,31 +3,58 @@ from track import Track
 from match import Match
 import pickle
 
-BASE_OLD = ''
-BASE_NEW = ''
-EXTS = []
-
-# libraries
-PATH_PICKLE_LIB_OLD = Path('src/pickles/lib_old.pickle')
-PATH_PICKLE_LIB_NEW = Path('src/pickles/lib_new.pickle')
-
-# filenames
-PATH_PICKLE_F_OLD = Path('src/pickles/f_old.pickle')
-PATH_PICKLE_F_NEW = Path('src/pickles/f_new.pickle')
-
-# unmatched
-PATH_PICKLE_U_OLD = Path('src/pickles/u_old.pickle')
-PATH_PICKLE_U_NEW = Path('src/pickles/u_new.pickle')
-
-# matched
-PATH_PICKLE_M_OLD = Path('src/pickles/m_old.pickle')
-PATH_PICKLE_M_NEW = Path('src/pickles/m_new.pickle')
-
-# matches
-PATH_PICKLE_MATCHES = Path('src/pickles/matches.pickle')
+# Constants
 
 THRESHOLD_CANDIDATE = .9
 THRESHOLD_CONFIDENT = .98
+
+# Configurables
+
+BASE_OLD = ''
+BASE_NEW = ''
+BASE_PICKLES = ''
+EXTS = []
+
+# Config
+
+if __name__ == '__main__':
+
+    with open('src/config.ini', 'r') as f:
+        for line in f.readlines():
+            k, v = (c.strip() for c in line.split('::'))
+
+            if k == 'BASE_OLD':
+                BASE_OLD = Path(v)
+            elif k == 'BASE_NEW':
+                BASE_NEW = Path(v)
+            elif k == 'BASE_PICKLES':
+                BASE_PICKLES = Path(v)
+            elif k == 'EXTS':
+                EXTS = v.split(',')
+
+    if not Path.exists(BASE_PICKLES):
+        Path.mkdir(BASE_PICKLES, exist_ok=True, parents=True)
+
+    # libraries
+    PATH_PICKLE_LIB_OLD = Path(f'{BASE_PICKLES}/lib_old.pickle')
+    PATH_PICKLE_LIB_NEW = Path(f'{BASE_PICKLES}/lib_new.pickle')
+
+    # filenames
+    PATH_PICKLE_F_OLD = Path(f'{BASE_PICKLES}/f_old.pickle')
+    PATH_PICKLE_F_NEW = Path(f'{BASE_PICKLES}/f_new.pickle')
+
+    # unmatched
+    PATH_PICKLE_U_OLD = Path(f'{BASE_PICKLES}/u_old.pickle')
+    PATH_PICKLE_U_NEW = Path(f'{BASE_PICKLES}/u_new.pickle')
+
+    # matched
+    PATH_PICKLE_M_OLD = Path(f'{BASE_PICKLES}/m_old.pickle')
+    PATH_PICKLE_M_NEW = Path(f'{BASE_PICKLES}/m_new.pickle')
+
+    # matches
+    PATH_PICKLE_MATCHES = Path(f'{BASE_PICKLES}/matches.pickle')
+
+# Functions
 
 def _pickle(o: object, path: Path) -> None:
     with open(path, 'wb') as f:
@@ -39,20 +66,6 @@ def _unpickle(path: Path, default: object=None) -> object:
             return pickle.load(f)
     else:
         return default
-
-def load_config() -> None:
-    global BASE_OLD, BASE_NEW, EXTS
-
-    with open('src/config.ini', 'r') as f:
-        for line in f.readlines():
-            k, v = (c.strip() for c in line.split('::'))
-
-            if k == 'BASE_OLD':
-                BASE_OLD = Path(v)
-            elif k == 'BASE_NEW':
-                BASE_NEW = Path(v)
-            elif k == 'EXTS':
-                EXTS = v.split(',')
 
 def get_filenames(path_pickle: Path, path_base: Path) -> tuple[set[str]]:
     """Returns 3 sets: existing, new, deleted."""
@@ -313,7 +326,6 @@ def clean_matches():
     _pickle(unmatched_new, PATH_PICKLE_U_NEW)
 
 def run():
-    load_config()
     # worst_matches()
     # clean_matches()
     update_matches()
