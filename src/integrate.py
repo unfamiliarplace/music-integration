@@ -3,29 +3,28 @@ from track import Track
 from match import Match
 import pickle
 
-BASE_OLD = Path('D:/88_old_music')
-BASE_NEW = Path('D:/1_processed')
-
-EXTS = ['mp3', 'flac', 'wav', 'm4a']
+BASE_OLD = ''
+BASE_NEW = ''
+EXTS = []
 
 # libraries
-PATH_PICKLE_LIB_OLD = Path('pickles/lib_old.pickle')
-PATH_PICKLE_LIB_NEW = Path('pickles/lib_new.pickle')
+PATH_PICKLE_LIB_OLD = Path('src/pickles/lib_old.pickle')
+PATH_PICKLE_LIB_NEW = Path('src/pickles/lib_new.pickle')
 
 # filenames
-PATH_PICKLE_F_OLD = Path('pickles/f_old.pickle')
-PATH_PICKLE_F_NEW = Path('pickles/f_new.pickle')
+PATH_PICKLE_F_OLD = Path('src/pickles/f_old.pickle')
+PATH_PICKLE_F_NEW = Path('src/pickles/f_new.pickle')
 
 # unmatched
-PATH_PICKLE_U_OLD = Path('pickles/u_old.pickle')
-PATH_PICKLE_U_NEW = Path('pickles/u_new.pickle')
+PATH_PICKLE_U_OLD = Path('src/pickles/u_old.pickle')
+PATH_PICKLE_U_NEW = Path('src/pickles/u_new.pickle')
 
 # matched
-PATH_PICKLE_M_OLD = Path('pickles/m_old.pickle')
-PATH_PICKLE_M_NEW = Path('pickles/m_new.pickle')
+PATH_PICKLE_M_OLD = Path('src/pickles/m_old.pickle')
+PATH_PICKLE_M_NEW = Path('src/pickles/m_new.pickle')
 
 # matches
-PATH_PICKLE_MATCHES = Path('pickles/matches.pickle')
+PATH_PICKLE_MATCHES = Path('src/pickles/matches.pickle')
 
 THRESHOLD_CANDIDATE = .9
 THRESHOLD_CONFIDENT = .98
@@ -40,6 +39,20 @@ def _unpickle(path: Path, default: object=None) -> object:
             return pickle.load(f)
     else:
         return default
+
+def load_config() -> None:
+    global BASE_OLD, BASE_NEW, EXTS
+
+    with open('src/config.ini', 'r') as f:
+        for line in f.readlines():
+            k, v = (c.strip() for c in line.split('::'))
+
+            if k == 'BASE_OLD':
+                BASE_OLD = Path(v)
+            elif k == 'BASE_NEW':
+                BASE_NEW = Path(v)
+            elif k == 'EXTS':
+                EXTS = v.split(',')
 
 def get_filenames(path_pickle: Path, path_base: Path) -> tuple[set[str]]:
     """Returns 3 sets: existing, new, deleted."""
@@ -219,7 +232,7 @@ def load_libraries() -> tuple[dict[str, Track], set[str]]:
 
     return lib_old, lib_new, forget_old, forget_new
 
-def run():
+def update_matches():
     lib_old, lib_new, forget_old, forget_new = load_libraries()
 
     print('Matching libraries...')
@@ -298,8 +311,12 @@ def clean_matches():
     _pickle(matched_new, PATH_PICKLE_M_NEW)
     _pickle(unmatched_old, PATH_PICKLE_U_OLD)
     _pickle(unmatched_new, PATH_PICKLE_U_NEW)
-    
-if __name__ == '__main__':
+
+def run():
+    load_config()
     # worst_matches()
     # clean_matches()
+    update_matches()
+
+if __name__ == '__main__':
     run()
