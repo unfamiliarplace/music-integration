@@ -432,13 +432,54 @@ def update_match_version() -> None:
 
     _pickle(new, PATH_PICKLE_MATCHES)
 
+def manually_remove_match() -> None:
+    matches = _unpickle(PATH_PICKLE_MATCHES, dict())
+    matched_old = _unpickle(PATH_PICKLE_M_OLD, set())
+    matched_new = _unpickle(PATH_PICKLE_M_NEW, set())
+    unmatched_old = _unpickle(PATH_PICKLE_U_OLD, set())
+    unmatched_new = _unpickle(PATH_PICKLE_U_OLD, set())
+
+    key = prompts.p_str('Enter a keyword').lower()
+
+    to_remove = set()
+
+    for (sig, m) in matches.items():
+        if key in sig.lower():
+            print()
+            choice = prompts.p_bool(f'Remove {sig}')
+            if choice:
+                to_remove.add(sig)
+                old_t_sig = m.track_old.sig()
+                new_t_sig = m.track_new.sig()
+
+                matched_old.discard(old_t_sig)
+                unmatched_old.add(old_t_sig)
+                matched_new.discard(new_t_sig)
+                unmatched_new.add(new_t_sig)
+
+                print('Removed')
+            
+            else:
+                print('Kept')
+
+    for sig in to_remove:
+        del matches[sig]
+
+    _pickle(matches, PATH_PICKLE_MATCHES)
+    _pickle(matched_old, PATH_PICKLE_M_OLD)
+    _pickle(matched_new, PATH_PICKLE_M_NEW)
+    _pickle(unmatched_old, PATH_PICKLE_U_OLD)
+    _pickle(unmatched_new, PATH_PICKLE_U_NEW)
+
+
 def run():
     choices = [
         update_matches,
         manually_vet_matches,
         clean_matches,
         worst_matches,
-        update_match_version
+        update_match_version,
+        manually_remove_match
     ]
 
     program = prompts.p_choice('Choose program', choices, allow_blank=True)
