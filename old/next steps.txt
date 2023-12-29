@@ -1,0 +1,12 @@
+-- do a better check than artist + song
+	I mean what about artists that have multiple versions of one song
+	All versions will be excluded even though only one may be in 3_filed
+
+	For example, if there are multiple of the same song for an artist,
+	then the check should include the album comparison
+
+-- sort all artists that are unique after the change into 'checked'
+-- for existing artists, list albums that are unique
+-- for existing albums, list songs that are unique
+
+-- Rich Mullins - Brother's Keeper - Title track was excluded. Are all title tracks excluded?
