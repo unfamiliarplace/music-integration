@@ -69,13 +69,13 @@ def _unpickle(path: Path, default: object=None) -> object:
     else:
         return default
     
-def get_track_siblings(lib: dict[str, Track], track: Track) -> set[Track]:
+def get_track_siblings(lib: dict[str, Track], track: Track, include_self: bool=False) -> set[Track]:
     result = set()
 
     for path in get_filenames(track.path.parent):
         sig = Track.sig_static(path)
         t = lib.get(sig, None)
-        if t is not None:
+        if t is not None and sig != track.sig():
             result.add(t)
     
     return result
@@ -294,22 +294,75 @@ def manually_vet_matches():
     matches = _unpickle(PATH_PICKLE_MATCHES, dict())
     manual = _unpickle(PATH_PICKLE_MANUAL, set())
 
-    from_worst = sorted(filter(lambda key: not matches[key].manually_scored, matches), key=lambda key: matches[key].score)
+    lib_old = _unpickle(PATH_PICKLE_LIB_OLD, dict())
+    lib_new = _unpickle(PATH_PICKLE_LIB_NEW, dict())
+
+    considerable = list(filter(lambda m: not m.manually_scored, matches.values()))
+    considerable = sorted(considerable, key=lambda m: m.sig())
 
     i = 0
     proceed = input('Hit Enter to see a match or Q to quit: ')
     while proceed.upper().strip() != 'Q':
-        print()
-        
-        m = matches[from_worst[i]]
+        try:
+            print()
 
-        prompt = 'Is this a match?'
-        prompt += f'\n{m.score:.2f}\n\n{m.track_old.path}\n{m.track_new.path}\n\n'
-        result = prompts.p_bool(prompt)
+            m = considerable[i]
+            n = 0
 
-        m.manually_score(result)
-        if result:
-            manual.add(m.sig())
+            prompt = 'Is this a match?'
+            prompt += f'\n{m.score:.2f}\n\n{m.track_old.path}\n{m.track_new.path}\n\n'
+            result = prompts.p_bool(prompt)
+
+            m.manually_score(result)
+            if result:
+                manual.add(m.sig())
+                n += 1
+
+                old_sibs = get_track_siblings(lib_old, m.track_old)
+                new_sibs = get_track_siblings(lib_new, m.track_new)
+                further = {}
+
+                for sib in old_sibs:
+                    for other in new_sibs:
+                        sig = Match.sig_static(sib, other)
+                        if sig in matches and matches[sig] in considerable:
+                            further[sig] = matches[sig]
+                            break
+                
+                if further:
+
+                    print()
+                    print('Then are these also matches?')
+                    print()
+
+                    pairs = [
+                        (
+                        ' / '.join(m2.track_old.path.parts[-2:]),
+                        ' / '.join(m2.track_new.path.parts[-2:])
+                        )
+                        for m2 in further.values()]
+                    
+                    longest = max(pairs, key=lambda p: len(p[0]))
+
+                    for pair in sorted(pairs):
+                        p1, p2 = pair[0].ljust(len(longest[0])), pair[1]
+                        print(f'{p1} = {p2}')
+
+                    print()
+                    result_further = prompts.p_bool('(In this case NO does not manually score)')
+                    if result_further:
+                        for m2 in further.values():
+                            m2.manually_score(True)
+                            manual.add(m2.sig())
+                            n += 1
+                            i += 1
+
+                    print()
+
+                print(f'Confirmed {n} matches manually')
+            
+        except KeyboardInterrupt:
+            break
         
         print()
         proceed = input('Hit Enter to see another match or Q to quit: ')

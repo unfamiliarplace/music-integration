@@ -35,9 +35,13 @@ class Match:
     def manually_score(self: Match, score: bool) -> None:
         self.manually_scored = True
         self.score = float(100 * score)
+
+    @staticmethod
+    def sig_static(track_old: Track, track_new: Track) -> str:
+        return f'{track_old.sig()} + {track_new.sig()}'
     
     def sig(self: Match) -> str:
-        return f'{self.track_old.sig()} + {self.track_new.sig()}'
+        return Match.sig_static(self.track_old, self.track_new)
 
     def __repr__(self: Match) -> str:
         return f'{self.track_old.sig():<110} {self.score:<.2f}   {self.track_new.sig()}'

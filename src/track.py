@@ -107,3 +107,7 @@ class Track:
     def score_similarity(self: Track, other: Track) -> float:        
         stats, denom = self.measure_similarity(other)
         return sum(stats) / denom, stats, denom
+
+    def __str__(self: Track) -> str:
+        return self.sig()
+    
