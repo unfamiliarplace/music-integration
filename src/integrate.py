@@ -1,6 +1,7 @@
 from pathlib import Path
 from track import Track
 from match import Match
+import prompts
 import pickle
 
 # Constants
@@ -53,6 +54,7 @@ if __name__ == '__main__':
 
     # matches
     PATH_PICKLE_MATCHES = Path(f'{BASE_PICKLES}/matches.pickle')
+    PATH_PICKLE_MANUAL = Path(f'{BASE_PICKLES}/manual.pickle')
 
 # Functions
 
@@ -66,22 +68,35 @@ def _unpickle(path: Path, default: object=None) -> object:
             return pickle.load(f)
     else:
         return default
+    
+def get_track_siblings(lib: dict[str, Track], track: Track) -> set[Track]:
+    result = set()
 
-def get_filenames(path_pickle: Path, path_base: Path) -> tuple[set[str]]:
+    for path in get_filenames(track.path.parent):
+        sig = Track.sig_static(path)
+        t = lib.get(sig, None)
+        if t is not None:
+            result.add(t)
+    
+    return result
+
+def get_filenames(path_base: Path) -> set[str]:
+    result = set()
+    for path in Path.rglob(path_base, '*'):
+        if path.suffix.strip('.').lower() in EXTS: # and 'Jackson Square' not in str(path):
+            result.add(path)
+    return result
+
+def get_filename_sets(path_pickle: Path, path_base: Path) -> tuple[set[str]]:
     """Returns 3 sets: existing, new, deleted."""
 
     existing: set = _unpickle(path_pickle, set())
-    found = set()
-
-    for path in Path.rglob(path_base, '*'):
-        if path.suffix.strip('.').lower() in EXTS: # and 'Jackson Square' not in str(path):
-            found.add(path)
-
+    found = get_filenames(path_base)
     return existing, found.difference(existing), existing.difference(found)
 
 def update_library(path_pickle_lib: Path, path_base: Path, path_pickle_filenames: Path) -> tuple[dict[str, Track], set[str]]:
     lib = _unpickle(path_pickle_lib, dict())
-    existing, new, deleted = get_filenames(path_pickle_filenames, path_base)
+    existing, new, deleted = get_filename_sets(path_pickle_filenames, path_base)
 
     print(f'Forgetting deleted tracks: {len(deleted)}')
 
@@ -275,9 +290,38 @@ def worst_matches():
         input(f'{m.score:.2f} - {m}')
         i += 1
 
+def manually_vet_matches():
+    matches = _unpickle(PATH_PICKLE_MATCHES, dict())
+    manual = _unpickle(PATH_PICKLE_MANUAL, set())
+
+    from_worst = sorted(filter(lambda key: not matches[key].manually_scored, matches), key=lambda key: matches[key].score)
+
+    i = 0
+    proceed = input('Hit Enter to see a match or Q to quit: ')
+    while proceed.upper().strip() != 'Q':
+        print()
+        
+        m = matches[from_worst[i]]
+
+        prompt = 'Is this a match?'
+        prompt += f'\n{m.score:.2f}\n\n{m.track_old.path}\n{m.track_new.path}\n\n'
+        result = prompts.p_bool(prompt)
+
+        m.manually_score(result)
+        if result:
+            manual.add(m.sig())
+        
+        print()
+        proceed = input('Hit Enter to see another match or Q to quit: ')
+
+        i += 1
+    
+    _pickle(matches, PATH_PICKLE_MATCHES)
+    _pickle(manual, PATH_PICKLE_MANUAL)
+
 def clean_matches():
-    e1, n1, d1 = get_filenames(PATH_PICKLE_F_OLD, BASE_OLD)
-    e2, n2, d2 = get_filenames(PATH_PICKLE_F_NEW, BASE_NEW)
+    e1, n1, d1 = get_filename_sets(PATH_PICKLE_F_OLD, BASE_OLD)
+    e2, n2, d2 = get_filename_sets(PATH_PICKLE_F_NEW, BASE_NEW)
 
     lib_1 = _unpickle(PATH_PICKLE_LIB_OLD, dict())
     lib_2 = _unpickle(PATH_PICKLE_LIB_NEW, dict())
@@ -325,10 +369,28 @@ def clean_matches():
     _pickle(unmatched_old, PATH_PICKLE_U_OLD)
     _pickle(unmatched_new, PATH_PICKLE_U_NEW)
 
+def update_match_version() -> None:
+    matches = _unpickle(PATH_PICKLE_MATCHES, dict())
+    new = {}
+
+    for m in matches.values():
+        m2 = Match(m.track_old, m.track_new)
+        new[m2.sig()] = m2
+
+    _pickle(new, PATH_PICKLE_MATCHES)
+
 def run():
-    # worst_matches()
-    # clean_matches()
-    update_matches()
+    choices = [
+        update_matches,
+        manually_vet_matches,
+        clean_matches,
+        worst_matches,
+        update_match_version
+    ]
+
+    program = prompts.p_choice('Choose program', choices, allow_blank=True)
+    if program is not None:
+        choices[program - 1]()
 
 if __name__ == '__main__':
-    run()
+    prompts.p_repeat_till_quit(run, c_phrase='run a program')

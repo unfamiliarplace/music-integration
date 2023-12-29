@@ -9,6 +9,7 @@ class Match:
     stats: list[float]
     denom: int
     score: float
+    manually_scored: bool
 
     def __init__(self: Match, track_old: Track, track_new: Track) -> None:
         self.track_old = track_old
@@ -19,6 +20,8 @@ class Match:
         self.denom = 0
         self.score = 0.0
 
+        self.manually_scored = False
+
         # Not sure which is stupider here, optimizing or not optimizing
         self.measure()
 
@@ -28,6 +31,10 @@ class Match:
         self.stats, self.denom = self.track_old.measure_similarity(self.track_new)
         self.score = sum(self.stats) / self.denom
         self.measured = True
+
+    def manually_score(self: Match, score: bool) -> None:
+        self.manually_scored = True
+        self.score = float(100 * score)
     
     def sig(self: Match) -> str:
         return f'{self.track_old.sig()} + {self.track_new.sig()}'
