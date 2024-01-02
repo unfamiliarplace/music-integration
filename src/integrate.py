@@ -392,7 +392,6 @@ def manually_vet_matches_fast():
     lib_new = _unpickle(PATH_PICKLE_LIB_NEW, dict())
 
     considerable = list(filter(lambda m: not m.manually_scored and m.score < THRESHOLD_CONFIDENT, matches.values()))
-    random.shuffle(considerable)
 
     if not considerable:
         print('None left to manually vet')
@@ -402,11 +401,15 @@ def manually_vet_matches_fast():
 
     i = 0
     proceed = input('Hit Enter to see a batch of matches or Q to quit: ')
-    while (i < (len(considerable) - 1)) and (proceed.upper().strip() != 'Q'):
+    while considerable and (proceed.upper().strip() != 'Q'):
 
-        try:            
-            ms = considerable[i:i+FAST_BATCH_SIZE]
-            actual_batch_size = len(ms)
+        try:
+            ms = set()
+            for _ in range(FAST_BATCH_SIZE):
+                ms.add(considerable.pop(random.randrange(len(considerable))))
+                if not considerable:
+                    break
+
             n = 0
 
             print()
@@ -455,8 +458,9 @@ def manually_vet_matches_fast():
                     for sib in old_sibs:
                         for other in new_sibs:
                             sig = Match.sig_static(sib, other)
-                            if sig in matches and matches[sig] in considerable:
-                                m2 = matches[sig]
+                            m2 = matches[sig]
+                            
+                            if sig in matches and m2 in considerable:                                
                                 further[sig] = m2
                                 
                                 if first_sib:
@@ -492,9 +496,12 @@ def manually_vet_matches_fast():
                     if result_further:
                         for m2 in further.values():
                             m2.manually_score(True)
-                            manual.add(m2.sig())
-                            n += 1
-                            i += 1
+
+                            m2_sig = m2.sig()
+
+                            if m2_sig not in manual:
+                                manual.add(m2_sig)
+                                n += 1                            
 
                     print()
 
@@ -505,8 +512,6 @@ def manually_vet_matches_fast():
         
         print()
         proceed = input('Hit Enter to see another batch or Q to quit: ')
-
-        i += actual_batch_size
     
     _pickle(matches, PATH_PICKLE_MATCHES)
     _pickle(manual, PATH_PICKLE_MANUAL)
