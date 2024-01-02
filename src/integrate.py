@@ -3,11 +3,13 @@ from track import Track
 from match import Match
 import prompts
 import pickle
+import random
 
 # Constants
 
 THRESHOLD_CANDIDATE = .9
 THRESHOLD_CONFIDENT = .98
+FAST_BATCH_SIZE = 40
 
 # Configurables
 
@@ -300,9 +302,15 @@ def manually_vet_matches():
     considerable = list(filter(lambda m: not m.manually_scored and m.score < THRESHOLD_CONFIDENT, matches.values()))
     considerable = sorted(considerable, key=lambda m: m.sig())
 
+    if not considerable:
+        print('None left to manually vet')
+        return
+    
+    print(f'{len(considerable)} to go...')
+
     i = 0
     proceed = input('Hit Enter to see a match or Q to quit: ')
-    while proceed.upper().strip() != 'Q':
+    while (i < (len(considerable) - 1)) and (proceed.upper().strip() != 'Q'):
         try:
             print()
 
@@ -310,8 +318,12 @@ def manually_vet_matches():
             n = 0
 
             prompt = 'Is this a match?'
-            prompt += f'\n{m.score:.2f}\n\n{m.track_old.path}\n{m.track_new.path}\n\n'
-            result = prompts.p_bool(prompt)
+
+            old_short = ' / '.join(m.track_old.path.parts[2:])
+            new_short = ' / '.join(m.track_new.path.parts[2:])
+
+            prompt += f'\n{m.score:.2f}\n\n{old_short}\n{new_short}\n\n'
+            result = prompts.p_bool(prompt + '\n')
 
             m.manually_score(result)
             if result:
@@ -346,7 +358,7 @@ def manually_vet_matches():
 
                     for pair in sorted(pairs):
                         p1, p2 = pair[0].ljust(len(longest[0])), pair[1]
-                        print(f'{p1} = {p2}')
+                        print(f'{p1}  =  {p2}')
 
                     print()
                     result_further = prompts.p_bool('(In this case NO does not manually score)')
@@ -371,6 +383,134 @@ def manually_vet_matches():
     
     _pickle(matches, PATH_PICKLE_MATCHES)
     _pickle(manual, PATH_PICKLE_MANUAL)
+
+def manually_vet_matches_fast():
+    matches = _unpickle(PATH_PICKLE_MATCHES, dict())
+    manual = _unpickle(PATH_PICKLE_MANUAL, set())
+
+    lib_old = _unpickle(PATH_PICKLE_LIB_OLD, dict())
+    lib_new = _unpickle(PATH_PICKLE_LIB_NEW, dict())
+
+    considerable = list(filter(lambda m: not m.manually_scored and m.score < THRESHOLD_CONFIDENT, matches.values()))
+    random.shuffle(considerable)
+
+    if not considerable:
+        print('None left to manually vet')
+        return
+
+    print(f'{len(considerable)} to go...')
+
+    i = 0
+    proceed = input('Hit Enter to see a batch of matches or Q to quit: ')
+    while (i < (len(considerable) - 1)) and (proceed.upper().strip() != 'Q'):
+
+        try:            
+            ms = considerable[i:i+FAST_BATCH_SIZE]
+            actual_batch_size = len(ms)
+            n = 0
+
+            print()
+            print('Are these all matches?')
+            print()
+
+            prompt_pairs = []
+            
+            for m in ms:
+                prompt_pairs.append(
+                    (
+                    ' / '.join(m.track_old.path.parts[2:]),
+                    ' / '.join(m.track_new.path.parts[2:])
+                    )
+                )
+
+            longest = max(prompt_pairs, key=lambda p: len(p[0]))
+
+            printed = 0
+            for pair in prompt_pairs:
+                p1, p2 = pair[0].ljust(len(longest[0])), pair[1]
+                print(f'{p1}  =  {p2}')
+
+                printed += 1
+                if not (printed % 5):
+                    print()
+
+            print()
+            result = prompts.p_bool('MATCHES (In this case NO does not manually score)')
+
+            if result:
+
+                further = {}
+                prompt_pairs = []
+
+                for m in ms:
+                    first_sib = True
+
+                    m.manually_score(result)
+                    manual.add(m.sig())
+                    n += 1
+
+                    old_sibs = get_track_siblings(lib_old, m.track_old)
+                    new_sibs = get_track_siblings(lib_new, m.track_new)
+
+                    for sib in old_sibs:
+                        for other in new_sibs:
+                            sig = Match.sig_static(sib, other)
+                            if sig in matches and matches[sig] in considerable:
+                                m2 = matches[sig]
+                                further[sig] = m2
+                                
+                                if first_sib:
+                                    prompt_pairs.append(
+                                                    (
+                                        ' / '.join(m2.track_old.path.parts[-2:]),
+                                        ' / '.join(m2.track_new.path.parts[-2:])
+                                        )
+                                    )
+                                    first_sib = False
+
+                                break
+                
+                if further:
+
+                    print()
+                    print('First sibling of each? (N = change nothing)')
+                    print()
+                    
+                    longest = max(prompt_pairs, key=lambda p: len(p[0]))
+
+                    printed = 0
+                    for pair in prompt_pairs:
+                        p1, p2 = pair[0].ljust(len(longest[0])), pair[1]
+                        print(f'{p1}  =  {p2}')
+
+                        printed += 1
+                        if not (printed % 5):
+                            print()
+
+                    print()
+                    result_further = prompts.p_bool('SIBLINGS (In this case NO does not manually score)')
+                    if result_further:
+                        for m2 in further.values():
+                            m2.manually_score(True)
+                            manual.add(m2.sig())
+                            n += 1
+                            i += 1
+
+                    print()
+
+                print(f'Confirmed {n} matches manually')
+            
+        except KeyboardInterrupt:
+            break
+        
+        print()
+        proceed = input('Hit Enter to see another batch or Q to quit: ')
+
+        i += actual_batch_size
+    
+    _pickle(matches, PATH_PICKLE_MATCHES)
+    _pickle(manual, PATH_PICKLE_MANUAL)
+
 
 def clean_matches():
     e1, n1, d1 = get_filename_sets(PATH_PICKLE_F_OLD, BASE_OLD)
@@ -476,6 +616,7 @@ def run():
     choices = [
         update_matches,
         manually_vet_matches,
+        manually_vet_matches_fast,
         clean_matches,
         worst_matches,
         update_match_version,
