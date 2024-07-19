@@ -3,7 +3,7 @@ from pathlib import Path
 from fuzzywuzzy import fuzz
 from tinytag import TinyTag
 from enum import Enum
-from tools import get_filepaths, normalize_title
+import tools
 import progressbar
 
 EXTS = ['mp3', 'flac', 'wav', 'm4a']
@@ -27,7 +27,7 @@ class Library:
     def scan(self: Library) -> None:
         existing = set(t.path for t in self.tracks.values())
         
-        filepaths = get_filepaths(self.path_base, exts=EXTS)
+        filepaths = tools.get_filepaths(self.path_base, exts=EXTS)
         new = filepaths.difference(existing)
         deleted = existing.difference(filepaths)
 
@@ -76,24 +76,49 @@ class Library:
 
 class Album:
     path: Path
-    folder: str
     tracks: dict[str, Track]
 
     match_state: MatchState
 
-    weight_folder = 5
-    weight_n_tracks = 3
-    weight_track_alignment = 10
+    data: dict[str, str]
+    weights = {
+        'folder_name': 5,
+        'n_tracks': 2,
+        'albumartists': 7,
+        'artists': 4
+    }
+
+    # TODO Track alignment as data with weight or not??
 
     def __init__(self: Album, path: Path) -> None:
         self.path = path
         self.tracks = {}
 
+        self.match_state = MatchState.UNKNOWN
+
+        self.set_default_data()
+
+    def set_default_data(self: Album) -> None:
+        self.data = {}
+        for k in self.weights:
+            self.data[k] = None
+        
+        self.data['folder_name'] = self.path.name
+        self.data['artists'] = set()
+        self.data['albumartists'] = set()
+
+    def update_data(self: Album, t: Track) -> None:
+        self.data['n_tracks'] = self.data.get('n_tracks', 0) + 1
+        self.data['artists'].add(t.data['artist'])
+        self.data['albumartists'].add(t.data['albumartist'])
+
 class Track:
     path: Path
-    match_state: MatchState
-    data: dict[str, str]
     album: Album
+
+    match_state: MatchState
+
+    data: dict[str, str]
     weights = {
         'filename': 5,
         'albumname': 6,
@@ -102,21 +127,23 @@ class Track:
         'albumartist': 6,
         'track': 2,
         'composer': 1,
-        'genre': 1
+        'genre': 1,
+        'duration': 5
     }
-    weight_duration = 5
-    # weight_sum = sum(weights.values()) + weight_duration
 
-    def __init__(self: Track, path: Path, duration: int, data: dict[str, str]) -> None:
+    def __init__(self: Track, path: Path, data: dict[str, str]) -> None:
         self.path = path
-        self.duration = duration
+        self.album = None
+
+        self.match_state = MatchState.UNKNOWN
+
         self.set_default_data()
         self.set_data(data)
 
     def set_default_data(self: Track) -> None:
         self.data = {}
         for k in self.weights:
-            self.data[k] = ''
+            self.data[k] = None
 
     def set_data(self: Track, data: dict[str, str]) -> None:
         for (k, v) in data.items():
@@ -125,7 +152,6 @@ class Track:
     @staticmethod
     def from_path(path: Path, fill_gaps: bool=True) -> Track:
         tags = TinyTag.get(path)
-        duration = tags.duration
 
         data = {
             'albumname': tags.album,
@@ -134,7 +160,8 @@ class Track:
             'albumartist': tags.albumartist,
             'track': tags.track,
             'composer': tags.composer,
-            'genre': tags.genre
+            'genre': tags.genre,
+            'duration': tags.duration
         }
 
         if fill_gaps and (data['albumartist'] is None):
@@ -143,13 +170,12 @@ class Track:
         data['filename'] = path.stem
 
         for (k, v) in data.items():
-            data[k] = normalize_title(v)
+            data[k] = tools.normalize_title(v)
 
-
-        return Track(path, duration, data)
+        return Track(path, data)
     
     def get_siblings(self: Track, include_self: bool=True) -> set[Track]:
-        siblings = self.album.tracks.copy()
+        siblings = set(self.album.tracks.values())
         if not include_self:
             siblings.remove(self)
         return siblings
@@ -159,22 +185,14 @@ class Track:
         denom = 0
 
         for key in self.data:
-            if None in (self.data[key], other.data[key]):
+            a, b = self.data[key], other.data[key]
+            if None in (a, b):
                 continue
-
+            
+            n = tools.compare(a, b)
             d = self.weights[key]
-            n = fuzz.ratio(self.data[key], other.data[key])
-
-            # print(n, self.data[key], other.data[key])
-
-            stats.append((n * d) / 100)
+            stats.append(n * d)
             denom += d
-        
-        durs = [self.duration, other.duration]
-        d = self.weight_duration
-        n = (min(durs) / max(durs))
-        stats.append((n * d))
-        denom += d
 
         return stats, denom
 
