@@ -1,59 +1,49 @@
+from __future__ import annotations
 from pathlib import Path
 from library import Library, Track, Album
 from match import Match
 import prompts
 import random
-from tools import _pickle, _unpickle, get_filepaths
+from tools import _pickle, _unpickle
 
-# Constants
+# God app :')
 
-THRESHOLD_CANDIDATE = .9
-THRESHOLD_CONFIDENT = .98
-FAST_BATCH_SIZE = 40
+class App:
 
-# Configurables
+    # Constants
+    THRESHOLD_CANDIDATE: float = 0.90
+    THRESHOLD_CONFIDENT: float = 0.98
+    FAST_BATCH_SIZE: int = 40
 
-BASE_OLD = ''
-BASE_NEW = ''
-BASE_PICKLES = ''
+    PATH_CONFIG: Path = Path('src/config.ini')
 
-# Config
+    # Configurables
+    PATH_LIB_OLD: Path
+    PATH_LIB_NEW: Path
+    PATH_PICKLES: Path
 
-if __name__ == '__main__':
+    PATH_PICKLE_LIB_OLD: Path
+    PATH_PICKLE_LIB_NEW: Path
 
-    with open('src/config.ini', 'r') as f:
-        for line in f.readlines():
-            k, v = (c.strip() for c in line.split('::'))
+    def load_configuration(self: App) -> None:
 
-            if k == 'BASE_OLD':
-                BASE_OLD = Path(v)
-            elif k == 'BASE_NEW':
-                BASE_NEW = Path(v)
-            elif k == 'BASE_PICKLES':
-                BASE_PICKLES = Path(v)
+        with open(self.PATH_CONFIG, 'r') as f:
+            for line in f.readlines():
+                k, v = (c.strip() for c in line.split('::'))
 
-    if not Path.exists(BASE_PICKLES):
-        Path.mkdir(BASE_PICKLES, exist_ok=True, parents=True)
+                if k == 'BASE_OLD':
+                    self.PATH_LIB_OLD = Path(v)
+                elif k == 'BASE_NEW':
+                    self.PATH_LIB_NEW = Path(v)
+                elif k == 'BASE_PICKLES':
+                    self.PATH_PICKLES = Path(v)
 
-    # libraries
-    PATH_PICKLE_LIB_OLD = Path(f'{BASE_PICKLES}/lib_old.pickle')
-    PATH_PICKLE_LIB_NEW = Path(f'{BASE_PICKLES}/lib_new.pickle')
+        if not Path.exists(self.PATH_PICKLES):
+            Path.mkdir(self.PATH_PICKLES, exist_ok=True, parents=True)
 
-    # filenames
-    PATH_PICKLE_F_OLD = Path(f'{BASE_PICKLES}/f_old.pickle')
-    PATH_PICKLE_F_NEW = Path(f'{BASE_PICKLES}/f_new.pickle')
-
-    # unmatched
-    PATH_PICKLE_U_OLD = Path(f'{BASE_PICKLES}/u_old.pickle')
-    PATH_PICKLE_U_NEW = Path(f'{BASE_PICKLES}/u_new.pickle')
-
-    # matched
-    PATH_PICKLE_M_OLD = Path(f'{BASE_PICKLES}/m_old.pickle')
-    PATH_PICKLE_M_NEW = Path(f'{BASE_PICKLES}/m_new.pickle')
-
-    # matches
-    PATH_PICKLE_MATCHES = Path(f'{BASE_PICKLES}/matches.pickle')
-    PATH_PICKLE_MANUAL = Path(f'{BASE_PICKLES}/manual.pickle')
+        # libraries
+        self.PATH_PICKLE_LIB_OLD = Path(f'{self.PATH_PICKLES}/lib_old.pickle')
+        self.PATH_PICKLE_LIB_NEW = Path(f'{self.PATH_PICKLES}/lib_new.pickle')
 
 # Functions
 
@@ -540,7 +530,7 @@ def manually_remove_match() -> None:
     _pickle(unmatched_old, PATH_PICKLE_U_OLD)
     _pickle(unmatched_new, PATH_PICKLE_U_NEW)
 
-
+# New functions
 
 def get_libraries() -> tuple[Library]:
 
@@ -550,13 +540,8 @@ def get_libraries() -> tuple[Library]:
         _pickle(lib, path_pickle)
         return lib
     
-    old = _get_library(BASE_OLD, PATH_PICKLE_LIB_OLD)
-    new = _get_library(BASE_NEW, PATH_PICKLE_LIB_NEW)
-
-    # print('Old albums', len(old.albums))
-    # print('Old tracks', len(old.tracks))
-    # print('New albums', len(new.albums))
-    # print('New tracks', len(new.tracks))
+    old = _get_library(app.PATH_LIB_OLD, app.PATH_PICKLE_LIB_OLD)
+    new = _get_library(app.PATH_LIB_NEW, app.PATH_PICKLE_LIB_NEW)
 
     return old, new
 
@@ -568,13 +553,20 @@ def get_libraries_dev() -> tuple[Library]:
         lib.scan()
         return lib
 
-    return _get_library(BASE_OLD), _get_library(BASE_NEW)
+    return _get_library(app.PATH_LIB_OLD), _get_library(app.PATH_LIB_NEW)
+
+def do_matches() -> None:
+    lib_old, lib_new = get_libraries_dev()
+
+def quit():
+    exit() # LOL. (Why? So it can be a function object with a __name__)
 
 def run():
     choices = [
-        exit,
+        quit,
         get_libraries,
-        get_libraries_dev
+        get_libraries_dev,
+        do_matches
         # update_matches,
         # manually_vet_matches,
         # manually_vet_matches_fast,
@@ -584,9 +576,11 @@ def run():
         # manually_remove_match
     ]
 
-    program = prompts.p_choice('Choose program', ['exit'] + [c.__name__ for c in choices[1:]], allow_blank=True)
+    program = prompts.p_choice('Choose program', [c.__name__ for c in choices], allow_blank=True)
     if program is not None:
         choices[program - 1]()
 
 if __name__ == '__main__':
+    app = App()
+    app.load_configuration()
     prompts.p_repeat_till_quit(run, c_phrase='run a program')
