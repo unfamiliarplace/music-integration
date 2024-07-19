@@ -1,9 +1,9 @@
 from pathlib import Path
-from track import Track
+from library import Library, Track, Album
 from match import Match
 import prompts
-import pickle
 import random
+from tools import _pickle, _unpickle, get_filepaths
 
 # Constants
 
@@ -16,7 +16,6 @@ FAST_BATCH_SIZE = 40
 BASE_OLD = ''
 BASE_NEW = ''
 BASE_PICKLES = ''
-EXTS = []
 
 # Config
 
@@ -32,8 +31,6 @@ if __name__ == '__main__':
                 BASE_NEW = Path(v)
             elif k == 'BASE_PICKLES':
                 BASE_PICKLES = Path(v)
-            elif k == 'EXTS':
-                EXTS = v.split(',')
 
     if not Path.exists(BASE_PICKLES):
         Path.mkdir(BASE_PICKLES, exist_ok=True, parents=True)
@@ -59,78 +56,6 @@ if __name__ == '__main__':
     PATH_PICKLE_MANUAL = Path(f'{BASE_PICKLES}/manual.pickle')
 
 # Functions
-
-def _pickle(o: object, path: Path) -> None:
-    with open(path, 'wb') as f:
-        pickle.dump(o, f)
-
-def _unpickle(path: Path, default: object=None) -> object:
-    if Path.exists(path):
-        with open(path, 'rb') as f:
-            return pickle.load(f)
-    else:
-        return default
-    
-def get_track_siblings(lib: dict[str, Track], track: Track, include_self: bool=False) -> set[Track]:
-    result = set()
-
-    for path in get_filenames(track.path.parent):
-        sig = Track.sig_static(path)
-        t = lib.get(sig, None)
-        if t is not None and sig != track.sig():
-            result.add(t)
-    
-    return result
-
-def get_filenames(path_base: Path) -> set[str]:
-    result = set()
-    for path in Path.rglob(path_base, '*'):
-        if path.suffix.strip('.').lower() in EXTS: # and 'Jackson Square' not in str(path):
-            result.add(path)
-    return result
-
-def get_filename_sets(path_pickle: Path, path_base: Path) -> tuple[set[str]]:
-    """Returns 3 sets: existing, new, deleted."""
-
-    existing: set = _unpickle(path_pickle, set())
-    found = get_filenames(path_base)
-    return existing, found.difference(existing), existing.difference(found)
-
-def update_library(path_pickle_lib: Path, path_base: Path, path_pickle_filenames: Path) -> tuple[dict[str, Track], set[str]]:
-    lib = _unpickle(path_pickle_lib, dict())
-    existing, new, deleted = get_filename_sets(path_pickle_filenames, path_base)
-
-    print(f'Forgetting deleted tracks: {len(deleted)}')
-
-    for path in deleted:
-        if path in lib:
-            del lib[Track.sig_static(path)]
-
-    # Report
-    print(f'Memorizing new tracks: {len(new)}')
-
-    if not len(new):
-        _pickle(lib, path_pickle_lib)
-        _pickle(existing.difference(deleted).union(new), path_pickle_filenames)
-        return lib, deleted
-
-    n = 0
-
-    # for path in Path.rglob(BASE_OLD / 'Bebo Norman', '*'):
-    for path in new:
-            
-        t = Track.from_path(path)
-        lib[t.sig()] = t
-
-        n += 1
-        if not (n % 1_000):
-            print(n)
-
-    print()
-
-    _pickle(lib, path_pickle_lib)
-    _pickle(existing.difference(deleted).union(new), path_pickle_filenames)
-    return lib, deleted
 
 def match_library(lib_old: dict[str, Track], lib_new: dict[str, Track], forget_old: set[str], forget_new: set[str]) -> tuple[int, dict[str, Match], set[str], set[str]]:
 
@@ -516,7 +441,6 @@ def manually_vet_matches_fast():
     _pickle(matches, PATH_PICKLE_MATCHES)
     _pickle(manual, PATH_PICKLE_MANUAL)
 
-
 def clean_matches():
     e1, n1, d1 = get_filename_sets(PATH_PICKLE_F_OLD, BASE_OLD)
     e2, n2, d2 = get_filename_sets(PATH_PICKLE_F_NEW, BASE_NEW)
@@ -617,18 +541,50 @@ def manually_remove_match() -> None:
     _pickle(unmatched_new, PATH_PICKLE_U_NEW)
 
 
+
+def get_libraries() -> tuple[Library]:
+
+    def _get_library(path: Path, path_pickle: Path) -> Library:
+        lib = _unpickle(path_pickle, Library(path))
+        lib.scan()
+        _pickle(lib, path_pickle)
+        return lib
+    
+    old = _get_library(BASE_OLD, PATH_PICKLE_LIB_OLD)
+    new = _get_library(BASE_NEW, PATH_PICKLE_LIB_NEW)
+
+    # print('Old albums', len(old.albums))
+    # print('Old tracks', len(old.tracks))
+    # print('New albums', len(new.albums))
+    # print('New tracks', len(new.tracks))
+
+    return old, new
+
+def get_libraries_dev() -> tuple[Library]:
+    '''Without pickling'''
+
+    def _get_library(path: Path) -> Library:
+        lib = Library(path)
+        lib.scan()
+        return lib
+
+    return _get_library(BASE_OLD), _get_library(BASE_NEW)
+
 def run():
     choices = [
-        update_matches,
-        manually_vet_matches,
-        manually_vet_matches_fast,
-        clean_matches,
-        worst_matches,
-        update_match_version,
-        manually_remove_match
+        exit,
+        get_libraries,
+        get_libraries_dev
+        # update_matches,
+        # manually_vet_matches,
+        # manually_vet_matches_fast,
+        # clean_matches,
+        # worst_matches,
+        # update_match_version,
+        # manually_remove_match
     ]
 
-    program = prompts.p_choice('Choose program', [c.__name__ for c in choices], allow_blank=True)
+    program = prompts.p_choice('Choose program', ['exit'] + [c.__name__ for c in choices[1:]], allow_blank=True)
     if program is not None:
         choices[program - 1]()
 

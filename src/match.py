@@ -1,6 +1,5 @@
 from __future__ import annotations
-from track import Track
-from typing import Self
+from library import Track
 
 class Match:
     track_old: Track
