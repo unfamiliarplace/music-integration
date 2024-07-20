@@ -382,7 +382,6 @@ def fix_decs() -> None:
         news.append(d2)
     _pickle(news, app.PATH_PICKLE_DECISIONS)
 
-
 def do_matches() -> None:
     decs, old, new = get_unknown_album_sets()
     report_progress(len(decs), len(old), len(new))
@@ -421,6 +420,9 @@ def do_matches() -> None:
 
     report_progress(len(decs), len(old) - n_matched, len(new))
     _pickle(decs, app.PATH_PICKLE_DECISIONS)
+
+def retry_unmatched() -> None:
+    print('Not implemented yet')
 
 def quit():
     exit() # LOL. (Why? So it can be a function object with a __name__)
