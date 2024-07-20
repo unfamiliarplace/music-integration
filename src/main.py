@@ -1,7 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 from library import Album, Library, Track
-import match
+import matching
 import prompts
 import random
 from tools import _pickle, _unpickle
@@ -25,6 +25,7 @@ class App:
 
     PATH_PICKLE_LIB_OLD: Path
     PATH_PICKLE_LIB_NEW: Path
+    PATH_PICKLE_DECISIONS: Path
 
     def load_configuration(self: App) -> None:
 
@@ -45,6 +46,7 @@ class App:
         # libraries
         self.PATH_PICKLE_LIB_OLD = Path(f'{self.PATH_PICKLES}/lib_old.pickle')
         self.PATH_PICKLE_LIB_NEW = Path(f'{self.PATH_PICKLES}/lib_new.pickle')
+        self.PATH_PICKLE_DECISIONS = Path(f'{self.PATH_PICKLES}/decisions.pickle')
 
 # Functions
 
@@ -534,41 +536,89 @@ def get_libraries_dev() -> tuple[Library]:
 
     return _get_library(app.PATH_LIB_OLD), _get_library(app.PATH_LIB_NEW)
 
-def find_best_match(a: Album, pool: list[Album]) -> tuple[Album, float]:
+def find_best_match(a: Album, pool: list[Album]) -> tuple[Album, float, bool]:
     best = None
     best_score = 0.0
+    satisfied = False
 
     for b in pool:
-        score, _, _ = match.score_similarity(a, b)
+        score, _, _ = matching.score_similarity(a, b)
         # input(f'{str(b):<70} {score}')
 
         if score > app.THRESHOLD_CONFIDENT:
-            return b, score
+            return b, score, True
 
         elif score > app.THRESHOLD_CANDIDATE:
-            if (best is None) or (score > best_score):
-                best = b
-                best_score = score
+            satisfied = True
 
-    if best is not None:
-        return best, best_score
-    else:
-        return None, 0.0
+        if score > best_score:
+            best = b
+            best_score = score
+
+    return best, best_score, satisfied
+
+def get_unknown_album_sets() -> tuple[list[matching.MatchDecision], list[Album], list[Album]]:
+    decs = _unpickle(app.PATH_PICKLE_DECISIONS, [])
+    lib_old, lib_new = get_libraries()
+    all_old, all_new = lib_old.albums.copy(), lib_new.albums.copy()
+
+    for dec in decs:
+        match dec.state:
+            case matching.MatchState.MATCHED:
+                del all_old[dec.old.path]
+                del all_new[dec.new.path]
+            case matching.MatchState.UNMATCHED:
+                del all_old[dec.old.path]
+
+    return decs, set(all_old.values()), set(all_new.values())
+
+def report_progress(n_dec: int, n_old: int, n_new: int) -> None:
+    print()
+    print(f'Decisions made:       {n_dec}')
+    print(f'Old albums undecided: {n_old}')
+    print(f'New albums eligible:  {n_new}')
+    print()
+
+def print_decisions() -> None:
+    decs = _unpickle(app.PATH_PICKLE_DECISIONS, [])
+    for dec in decs:
+        print(dec)
 
 def do_matches() -> None:
-    def get_eligible_albums(lib: Library) -> list[Album]:
-        albs = sorted(lib.albums.values())
-        return [a for a in albs if (a.match_state is match.MatchState.UNKNOWN)]
+    decs, old, new = get_unknown_album_sets()
+    report_progress(len(decs), len(old), len(new))
 
-    lib_old, lib_new = get_libraries_dev()
+    print('y = match; n = matchless; q = stop for now; Enter = no decision.\n')
 
-    unk_old = get_eligible_albums(lib_old)
-    unk_new = get_eligible_albums(lib_new)
+    n_matched = 0
+    for a in old:
+        b, score, satisfied = find_best_match(a, new)
 
-    for old in unk_old:
-        best, score = find_best_match(old, unk_new)
-        if best:
-            input(f'Is this a match? {old.present():<70} {score:<.2} {best.present()}')
+        if satisfied:
+            p_word = 'LIKELY!!!!!'
+        else:
+            p_word = 'IMPROBABLE!'
+
+        p = f'{a.present():<80} {b.present():<80} {p_word} {score:<.2f} ::: '
+
+        choice = input(p).upper().strip()
+        while choice not in {'Y', '', 'N', 'Q'}:
+            print('\nUnrecognized decision.')
+            choice = input(p).upper().strip()
+
+        if choice == 'Y':
+            decs.append(matching.MatchDecision(a, b, matching.MatchState.MATCHED, score))
+            new.remove(b)
+            n_matched += 1
+        
+        elif choice == 'N':
+            decs.append(matching.MatchDecision(a, b, matching.MatchState.UNMATCHED, score))                
+        
+        elif choice == 'Q':
+            break
+
+    report_progress(len(decs), len(old) - n_matched, len(new))
+    _pickle(decs, app.PATH_PICKLE_DECISIONS)
 
 def quit():
     exit() # LOL. (Why? So it can be a function object with a __name__)
@@ -576,9 +626,8 @@ def quit():
 def run():
     choices = [
         quit,
-        get_libraries,
-        get_libraries_dev,
-        do_matches
+        do_matches,
+        print_decisions
         # update_matches,
         # manually_vet_matches,
         # manually_vet_matches_fast,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
 from tinytag import TinyTag
-from match import MatchState, Matchable
+from matching import MatchState, Matchable
 import tools
 import progressbar
 from functools import total_ordering
@@ -69,14 +69,9 @@ class Album(Matchable):
         'artists': 4
     }
 
-    # TODO Track alignment as data with weight or not??
-
     def __init__(self: Album, path: Path) -> None:
         self.path = path
         self.tracks = {}
-
-        self.match_state = MatchState.UNKNOWN
-
         self.set_default_data()
 
     def set_default_data(self: Album) -> None:
@@ -134,10 +129,7 @@ class Track(Matchable):
 
     def __init__(self: Track, path: Path, data: dict[str, str]) -> None:
         self.path = path
-        self.album = None
-
-        self.match_state = MatchState.UNKNOWN
-
+        self.album = None # Gets set at album creation
         self.set_default_data()
         self.set_data(data)
 

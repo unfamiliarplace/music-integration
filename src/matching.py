@@ -11,12 +11,32 @@ class MatchState(Enum):
     UNMATCHED = 3
 
 class Matchable:
-    match_state: MatchState
     data: dict[str, object]
     weights: dict[str, int]
 
     def set_default_data(self: Matchable) -> None:
         raise NotImplementedError
+
+class MatchDecision:
+    old: Matchable
+    new: Matchable
+    state: MatchState
+    score: float
+
+    def __init__(self: MatchDecision, old: Matchable, new: Matchable, state: MatchState, score: float) -> None:
+        self.old, self.new = old, new
+        self.state, self.score = state, score
+
+    def __str__(self: MatchDecision) -> str:
+
+        if self.state is MatchState.UNMATCHED:
+            return f'{self.old.present():<80} x has no match'
+        
+        elif self.state is MatchState.MATCHED:
+            return f'{self.old.present():<80} = {self.new.present():<80}'
+        
+        else:
+            return f'{self.old.present():<80} ? unknown or partial match'
 
 def measure_similarity(m1: Matchable, m2: Matchable) -> tuple[tuple[float], int]:
     stats = []
@@ -34,7 +54,7 @@ def measure_similarity(m1: Matchable, m2: Matchable) -> tuple[tuple[float], int]
 
     return stats, denom
 
-def score_similarity(m1: Matchable, m2: Matchable) -> tuple[float, tuple[float], int]:        
+def score_similarity(m1: Matchable, m2: Matchable) -> tuple[float, tuple[float], int]:       
     stats, denom = measure_similarity(m1, m2)
     return sum(stats) / denom, stats, denom
 
