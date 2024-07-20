@@ -1,7 +1,7 @@
 from __future__ import annotations
 from pathlib import Path
-from library import Library, Track, Album
-from match import Match
+from library import Album, Library, Track
+import match
 import prompts
 import random
 from tools import _pickle, _unpickle
@@ -11,9 +11,10 @@ from tools import _pickle, _unpickle
 class App:
 
     # Constants
-    THRESHOLD_CANDIDATE: float = 0.90
-    THRESHOLD_CONFIDENT: float = 0.98
+    THRESHOLD_CANDIDATE: float = 0.75
+    THRESHOLD_CONFIDENT: float = 0.97
     FAST_BATCH_SIZE: int = 40
+    ALBUM_NAME_LENGTH: int = 60
 
     PATH_CONFIG: Path = Path('src/config.ini')
 
@@ -95,20 +96,6 @@ def match_library(lib_old: dict[str, Track], lib_new: dict[str, Track], forget_o
     eligible_old = all_old.difference(matched_old).difference(unmatched_old)
     eligible_new = all_new.difference(matched_new) # .difference(unmatched_new)
 
-    # print('mm', len(matches))
-    # print()
-    # print('ao', len(all_old))
-    # print('an', len(all_new))
-    # print()
-    # print('uo', len(unmatched_old))
-    # print('un', len(unmatched_new))
-    # print()
-    # print('mo', len(matched_old))
-    # print('mn', len(matched_new))
-    # print()
-    # print('eo', len(eligible_old))
-    # print('en', len(eligible_new))
-
     try:
 
         n = 0
@@ -122,12 +109,12 @@ def match_library(lib_old: dict[str, Track], lib_new: dict[str, Track], forget_o
                 new = lib_new[new_key]
                 m = Match(old, new)
 
-                if m.score > THRESHOLD_CONFIDENT:
+                if m.score > app.THRESHOLD_CONFIDENT:
                     _add_match(m, old, new)
                     found = True
                     break
 
-                elif m.score > THRESHOLD_CANDIDATE:
+                elif m.score > app.THRESHOLD_CANDIDATE:
                     if (best is None) or (m.score > best.score):
                         best = m
 
@@ -136,14 +123,6 @@ def match_library(lib_old: dict[str, Track], lib_new: dict[str, Track], forget_o
                     _add_match(best, old, new)
                 else:
                     unmatched_old.add(old.sig())
-
-            n += 1
-            if not (n % 100):
-                print(n)
-
-            # # TODO
-            # if n == 1_000:
-            #     break
 
         unmatched_new = all_new.difference(matched_new)
 
@@ -555,8 +534,41 @@ def get_libraries_dev() -> tuple[Library]:
 
     return _get_library(app.PATH_LIB_OLD), _get_library(app.PATH_LIB_NEW)
 
+def find_best_match(a: Album, pool: list[Album]) -> tuple[Album, float]:
+    best = None
+    best_score = 0.0
+
+    for b in pool:
+        score, _, _ = match.score_similarity(a, b)
+        # input(f'{str(b):<70} {score}')
+
+        if score > app.THRESHOLD_CONFIDENT:
+            return b, score
+
+        elif score > app.THRESHOLD_CANDIDATE:
+            if (best is None) or (score > best_score):
+                best = b
+                best_score = score
+
+    if best is not None:
+        return best, best_score
+    else:
+        return None, 0.0
+
 def do_matches() -> None:
+    def get_eligible_albums(lib: Library) -> list[Album]:
+        albs = sorted(lib.albums.values())
+        return [a for a in albs if (a.match_state is match.MatchState.UNKNOWN)]
+
     lib_old, lib_new = get_libraries_dev()
+
+    unk_old = get_eligible_albums(lib_old)
+    unk_new = get_eligible_albums(lib_new)
+
+    for old in unk_old:
+        best, score = find_best_match(old, unk_new)
+        if best:
+            input(f'Is this a match? {old.present():<70} {score:<.2} {best.present()}')
 
 def quit():
     exit() # LOL. (Why? So it can be a function object with a __name__)

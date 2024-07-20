@@ -1,18 +1,12 @@
 from __future__ import annotations
 from pathlib import Path
-from fuzzywuzzy import fuzz
 from tinytag import TinyTag
-from enum import Enum
+from match import MatchState, Matchable
 import tools
 import progressbar
+from functools import total_ordering
 
 EXTS = ['mp3', 'flac', 'wav', 'm4a']
-
-class MatchState(Enum):
-    UNKNOWN = 0
-    MATCHED = 1
-    PARTIAL = 2
-    UNMATCHED = 3
 
 class Library:
     path_base: Path
@@ -59,32 +53,19 @@ class Library:
                 self.tracks[key] = t
 
                 par = path.parent
-                if par not in self.albums:
-                    a = Album(par)
-                    self.albums[par] = a
+                a = self.albums.setdefault(par, Album(par))
 
                 a.tracks[key] = t
+                a.update_data(t)
 
-# class Match:
-#     pass
-
-# class TrackMatch:
-#     pass
-
-# class AlbumMatch:
-#     pass
-
-class Album:
+@total_ordering
+class Album(Matchable):
     path: Path
     tracks: dict[str, Track]
-
-    match_state: MatchState
-
-    data: dict[str, str]
     weights = {
-        'folder_name': 5,
+        'folder_name': 6,
         'n_tracks': 2,
-        'albumartists': 7,
+        'albumartists': 12,
         'artists': 4
     }
 
@@ -102,23 +83,43 @@ class Album:
         self.data = {}
         for k in self.weights:
             self.data[k] = None
-        
+
+        self.data['n_tracks'] = 0        
         self.data['folder_name'] = self.path.name
         self.data['artists'] = set()
         self.data['albumartists'] = set()
 
     def update_data(self: Album, t: Track) -> None:
-        self.data['n_tracks'] = self.data.get('n_tracks', 0) + 1
+        self.data['n_tracks'] += 1
         self.data['artists'].add(t.data['artist'])
         self.data['albumartists'].add(t.data['albumartist'])
 
-class Track:
+    def present(self: Album) -> str:
+        artist = sorted(self.data['albumartists'])[0]
+        return f'{artist} / {self.path.name}'
+
+    def __str__(self: Album) -> str:
+        return self.path.name
+    
+    def __hash__(self: Album) -> int:
+        return hash(self.path)
+
+    def __lt__(self: Album, other: object) -> bool:
+        if not isinstance(other, Album):
+            raise TypeError('Cannot compare Album and non-Album')
+        
+        return str(self.path.name) < str(other.path.name)
+    
+    def __eq__(self: Album, other: object) -> bool:
+        if not isinstance(other, Album):
+            return False
+        
+        return str(self.path) == str(other.path)
+
+@total_ordering
+class Track(Matchable):
     path: Path
     album: Album
-
-    match_state: MatchState
-
-    data: dict[str, str]
     weights = {
         'filename': 5,
         'albumname': 6,
@@ -180,29 +181,21 @@ class Track:
             siblings.remove(self)
         return siblings
 
-    def measure_similarity(self: Track, other: Track) -> tuple[float, int]:
-        stats = []
-        denom = 0
-
-        for key in self.data:
-            a, b = self.data[key], other.data[key]
-            if None in (a, b):
-                continue
-            
-            n = tools.compare(a, b)
-            d = self.weights[key]
-            stats.append(n * d)
-            denom += d
-
-        return stats, denom
-
-    def score_similarity(self: Track, other: Track) -> float:        
-        stats, denom = self.measure_similarity(other)
-        return sum(stats) / denom, stats, denom
-
     def __str__(self: Track) -> str:
-        return self.sig()
+        return self.path.name
     
-    def __hash__(self) -> int:
+    def __hash__(self: Track) -> int:
         return hash(self.path)
+
+    def __lt__(self: Track, other: object) -> bool:
+        if not isinstance(other, Track):
+            raise TypeError('Cannot compare Track and non-Track')
+        
+        return str(self.path.name) < str(other.path.name)
+    
+    def __eq__(self: Album, other: object) -> bool:
+        if not isinstance(other, Track):
+            return False
+        
+        return str(self.path) == str(other.path)
     
