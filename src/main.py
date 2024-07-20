@@ -393,7 +393,7 @@ def format_track_comparison_row(a: Track, b: Track, score: float) -> list[str]:
     cols.append(f'{score:<.2f}')
     return cols
 
-def compare_albums(a: Album, b: Album) -> None:
+def compare_albums(a: Album, b: Album) -> list[Track]:
     aligned = []
     misaligned = []
 
@@ -418,6 +418,17 @@ def compare_albums(a: Album, b: Album) -> None:
         print('Not sure about these:')
         print(tabulate(misaligned))
 
+        choice = input('k = accept these judgements; r = revise manually; Enter = leave album undecided').upper().strip()
+        while choice not in {'K', 'R', ''}:
+            print('Command not recognized')
+            choice = input('k = accept these judgements; r = revise manually; Enter = leave album undecided').upper().strip()
+        
+        if choice == 'K':
+            pass
+        elif choice == 'R':
+            pass
+        else:
+            pass
 
 def do_matches() -> None:
     decs, old, new = get_unknown_album_sets()
