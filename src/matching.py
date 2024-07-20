@@ -3,7 +3,7 @@ from enum import Enum
 from numbers import Number
 from typing import Iterable
 from fuzzywuzzy import fuzz
-from datetime import datetime
+import tools
 
 class MatchState(Enum):
     UNKNOWN = 0
@@ -14,7 +14,7 @@ class MatchState(Enum):
 class Matchable:
     data: dict[str, object]
     weights: dict[str, int]
-    dt_seen: datetime
+    ts_seen: int
 
     def set_default_data(self: Matchable) -> None:
         raise NotImplementedError
@@ -24,12 +24,12 @@ class MatchDecision:
     new: Matchable
     state: MatchState
     score: float
-    dt_made: datetime
+    ts_made: int
 
     def __init__(self: MatchDecision, old: Matchable, new: Matchable, state: MatchState, score: float) -> None:
         self.old, self.new = old, new
         self.state, self.score = state, score
-        self.dt_made = datetime.now()
+        self.ts_made = tools.ts_now()
 
     def __str__(self: MatchDecision) -> str:
 

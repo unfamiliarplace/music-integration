@@ -5,6 +5,7 @@ import matching
 import prompts
 import random
 from tools import _pickle, _unpickle
+import tools
 
 # God app :')
 
@@ -521,7 +522,9 @@ def get_libraries() -> tuple[Library]:
         _pickle(lib, path_pickle)
         return lib
     
+    print('Scanning old library...')
     old = _get_library(app.PATH_LIB_OLD, app.PATH_PICKLE_LIB_OLD)
+    print('Scanning new library...')
     new = _get_library(app.PATH_LIB_NEW, app.PATH_PICKLE_LIB_NEW)
 
     return old, new
@@ -534,7 +537,12 @@ def get_libraries_dev() -> tuple[Library]:
         lib.scan()
         return lib
 
-    return _get_library(app.PATH_LIB_OLD), _get_library(app.PATH_LIB_NEW)
+    print('Scanning old library...')
+    old = _get_library(app.PATH_LIB_OLD)
+    print('Scanning new library...')
+    new = _get_library(app.PATH_LIB_NEW)
+
+    return old, new
 
 def find_best_match(a: Album, pool: list[Album]) -> tuple[Album, float, bool]:
     best = None
@@ -630,7 +638,7 @@ def run():
     choices = [
         quit,
         do_matches,
-        print_decisions
+        print_decisions,
         # update_matches,
         # manually_vet_matches,
         # manually_vet_matches_fast,

@@ -2,7 +2,6 @@ from __future__ import annotations
 from pathlib import Path
 from tinytag import TinyTag
 from matching import Matchable
-from datetime import datetime
 import tools
 import progressbar
 from functools import total_ordering
@@ -25,6 +24,8 @@ class Library:
         filepaths = tools.get_filepaths(self.path_base, exts=EXTS)
         new = filepaths.difference(existing)
         deleted = existing.difference(filepaths)
+
+        ts = tools.ts_now()
 
         if deleted:
             print(f'Forgetting deleted tracks: {len(deleted)}')
@@ -50,11 +51,11 @@ class Library:
             for path in bar(new):
                 key = str(path) 
 
-                t = Track.from_path(path)
+                t = Track.from_path(path, ts=ts)
                 self.tracks[key] = t
 
                 par = path.parent
-                a = self.albums.setdefault(par, Album(par))
+                a = self.albums.setdefault(par, Album(par, ts))
 
                 a.tracks[key] = t
                 a.update_data(t)
@@ -70,10 +71,10 @@ class Album(Matchable):
         'artists': 4
     }
 
-    def __init__(self: Album, path: Path) -> None:
+    def __init__(self: Album, path: Path, ts: int=0) -> None:
         self.path = path
         self.tracks = {}
-        self.dt_seen = datetime.now()
+        self.ts_seen = ts
         self.set_default_data()
 
     def set_default_data(self: Album) -> None:
@@ -129,10 +130,10 @@ class Track(Matchable):
         'duration': 5
     }
 
-    def __init__(self: Track, path: Path, data: dict[str, str]) -> None:
+    def __init__(self: Track, path: Path, data: dict[str, str], ts: int=0) -> None:
         self.path = path
         self.album = None # Gets set at album creation
-        self.dt_seen = datetime.now()
+        self.ts_seen = ts
         self.set_default_data()
         self.set_data(data)
 
@@ -146,7 +147,7 @@ class Track(Matchable):
             self.data[k] = v
 
     @staticmethod
-    def from_path(path: Path, fill_gaps: bool=True) -> Track:
+    def from_path(path: Path, fill_gaps: bool=True, ts: int=0) -> Track:
         tags = TinyTag.get(path)
 
         data = {
@@ -168,7 +169,7 @@ class Track(Matchable):
         for (k, v) in data.items():
             data[k] = tools.normalize_title(v)
 
-        return Track(path, data)
+        return Track(path, data, ts=ts)
     
     def get_siblings(self: Track, include_self: bool=True) -> set[Track]:
         siblings = set(self.album.tracks.values())

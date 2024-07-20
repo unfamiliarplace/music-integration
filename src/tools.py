@@ -1,4 +1,5 @@
 
+import datetime
 import pickle
 from pathlib import Path
 
@@ -30,3 +31,6 @@ def normalize_title(s: str) -> str:
     s = s.casefold()
 
     return s
+
+def ts_now() -> int:
+    return int(datetime.datetime.timestamp(datetime.datetime.now()) * 1_000)
