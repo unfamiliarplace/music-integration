@@ -607,6 +607,9 @@ def do_matches() -> None:
             choice = input(p).upper().strip()
 
         if choice == 'Y':
+
+            # TODO Compare tracklist here
+
             decs.append(matching.MatchDecision(a, b, matching.MatchState.MATCHED, score))
             new.remove(b)
             n_matched += 1
