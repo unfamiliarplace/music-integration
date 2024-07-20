@@ -6,6 +6,7 @@ import prompts
 import random
 from tools import _pickle, _unpickle
 import tools
+from tabulate import tabulate
 
 # God app :')
 
@@ -307,7 +308,7 @@ def get_libraries_dev() -> tuple[Library]:
 
     return old, new
 
-def find_best_match(a: Album, pool: list[Album]) -> tuple[Album, float, bool]:
+def find_best_match(a: matching.Matchable, pool: list[matching.Matchable]) -> tuple[matching.Matchable, float, bool]:
     best = None
     best_score = 0.0
     satisfied = False
@@ -357,9 +358,12 @@ def print_decisions() -> None:
 
 def undo_decision() -> None:
     decs = _unpickle(app.PATH_PICKLE_DECISIONS, [])
-    kw = prompts.p_str('Enter a keyword to search for').lower()
+    kw = prompts.p_str('Enter a keyword to search for', allow_blank=True).lower().strip()
+    if not kw:
+        print('Cancelled')
+        return        
 
-    opts = list(filter(lambda d: kw in d.present(), decs))
+    opts = list(filter(lambda d: kw in d.present().lower(), decs))
     if not opts:
         print('None found')
         return
@@ -381,6 +385,39 @@ def fix_decs() -> None:
         d2 = matching.MatchDecision(d.old, d.new, d.state, d.score, d.ts_made)
         news.append(d2)
     _pickle(news, app.PATH_PICKLE_DECISIONS)
+
+def format_track_comparison_row(a: Track, b: Track, score: float) -> list[str]:
+    cols = []
+    cols.append(a.path.stem)
+    cols.append(b.path.stem)
+    cols.append(f'{score:<.2f}')
+    return cols
+
+def compare_albums(a: Album, b: Album) -> None:
+    aligned = []
+    misaligned = []
+
+    ours = list(a.tracks.values())
+    pool = list(b.tracks.values())
+
+    for track in ours:
+        best, score, satisfied = find_best_match(track, pool)
+        if not satisfied:
+            misaligned.append(format_track_comparison_row(track, best, score))
+        else:            
+            aligned.append(format_track_comparison_row(track, best, score))
+            pool.remove(best)
+
+    aligned.sort(key=lambda row: row[2], reverse=True)
+    misaligned.sort(key=lambda row: row[2], reverse=True)
+
+    if misaligned:
+        print()
+        print('Pretty sure about these:')
+        print(tabulate(aligned))
+        print('Not sure about these:')
+        print(tabulate(misaligned))
+
 
 def do_matches() -> None:
     decs, old, new = get_unknown_album_sets()
@@ -406,7 +443,8 @@ def do_matches() -> None:
 
         if choice == 'Y':
 
-            # TODO Compare tracklist here
+            unmatched_tracks = compare_albums(a, b)
+            # input('hey but\n' + '\n'.join([str(t) for t in unmatched_tracks]))
 
             decs.append(matching.MatchDecision(a, b, matching.MatchState.MATCHED, score, tools.ts_now()))
             new.remove(b)
