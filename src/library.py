@@ -1,7 +1,8 @@
 from __future__ import annotations
 from pathlib import Path
 from tinytag import TinyTag
-from matching import MatchState, Matchable
+from matching import Matchable
+from datetime import datetime
 import tools
 import progressbar
 from functools import total_ordering
@@ -72,6 +73,7 @@ class Album(Matchable):
     def __init__(self: Album, path: Path) -> None:
         self.path = path
         self.tracks = {}
+        self.dt_seen = datetime.now()
         self.set_default_data()
 
     def set_default_data(self: Album) -> None:
@@ -130,6 +132,7 @@ class Track(Matchable):
     def __init__(self: Track, path: Path, data: dict[str, str]) -> None:
         self.path = path
         self.album = None # Gets set at album creation
+        self.dt_seen = datetime.now()
         self.set_default_data()
         self.set_data(data)
 

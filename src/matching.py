@@ -3,6 +3,7 @@ from enum import Enum
 from numbers import Number
 from typing import Iterable
 from fuzzywuzzy import fuzz
+from datetime import datetime
 
 class MatchState(Enum):
     UNKNOWN = 0
@@ -13,6 +14,7 @@ class MatchState(Enum):
 class Matchable:
     data: dict[str, object]
     weights: dict[str, int]
+    dt_seen: datetime
 
     def set_default_data(self: Matchable) -> None:
         raise NotImplementedError
@@ -22,10 +24,12 @@ class MatchDecision:
     new: Matchable
     state: MatchState
     score: float
+    dt_made: datetime
 
     def __init__(self: MatchDecision, old: Matchable, new: Matchable, state: MatchState, score: float) -> None:
         self.old, self.new = old, new
         self.state, self.score = state, score
+        self.dt_made = datetime.now()
 
     def __str__(self: MatchDecision) -> str:
 
@@ -89,48 +93,3 @@ def compare_iterables(a: Iterable, b: Iterable) -> float:
         score += max(compare(b_sub, a_sub) for a_sub in a)
 
     return score / (len(a) + len(b))
-
-# class Match:
-#     track_old: Track
-#     track_new: Track
-#     measured: bool
-#     stats: list[float]
-#     denom: int
-#     score: float
-#     manually_scored: bool
-
-#     def __init__(self: Match, track_old: Track, track_new: Track) -> None:
-#         self.track_old = track_old
-#         self.track_new = track_new
-
-#         self.measured = False
-#         self.stats = []
-#         self.denom = 0
-#         self.score = 0.0
-
-#         self.manually_scored = False
-
-#         # Not sure which is stupider here, optimizing or not optimizing
-#         self.measure()
-
-#     def measure(self: Match) -> None:
-
-#         # No condition because I prefer allowing to remeasure if necessary
-#         self.stats, self.denom = self.track_old.measure_similarity(self.track_new)
-#         self.score = sum(self.stats) / self.denom
-#         self.measured = True
-
-#     def manually_score(self: Match, score: bool) -> None:
-#         self.manually_scored = True
-#         self.score = float(100 * score)
-
-#     @staticmethod
-#     def sig_static(track_old: Track, track_new: Track) -> str:
-#         return f'{track_old.sig()} + {track_new.sig()}'
-    
-#     def sig(self: Match) -> str:
-#         return Match.sig_static(self.track_old, self.track_new)
-
-#     def __repr__(self: Match) -> str:
-#         return f'{self.track_old.sig():<110} {self.score:<.2f}   {self.track_new.sig()}'
-    
