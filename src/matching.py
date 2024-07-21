@@ -25,11 +25,13 @@ class MatchDecision:
     state: MatchState
     score: float
     ts_made: int
+    omit: list[Matchable]
 
-    def __init__(self: MatchDecision, old: Matchable, new: Matchable, state: MatchState, score: float, ts: int=0) -> None:
+    def __init__(self: MatchDecision, old: Matchable, new: Matchable, state: MatchState, score: float, ts: int=0, omit: list[Matchable]=[]) -> None:
         self.old, self.new = old, new
         self.state, self.score = state, score
         self.ts_made = ts
+        self.omit = omit
 
     def present(self: MatchDecision) -> str:
         return f'{self.old.present():<80} vs {self.new.present():<80}'

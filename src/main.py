@@ -382,7 +382,7 @@ def fix_decs() -> None:
     decs = _unpickle(app.PATH_PICKLE_DECISIONS, [])
     news = []
     for d in decs:
-        d2 = matching.MatchDecision(d.old, d.new, d.state, d.score, d.ts_made)
+        d2 = matching.MatchDecision(d.old, d.new, d.state, d.score, ts=d.ts_made, omit=[])
         news.append(d2)
     _pickle(news, app.PATH_PICKLE_DECISIONS)
 
@@ -393,9 +393,12 @@ def format_track_comparison_row(a: Track, b: Track, score: float) -> list[str]:
     cols.append(f'{score:<.2f}')
     return cols
 
-def compare_albums(a: Album, b: Album) -> list[Track]:
-    aligned = []
-    misaligned = []
+def compare_albums(a: Album, b: Album) -> tuple[matching.MatchState, list[Track]]:
+    """Returns a MatchState and Tracks from a that are not matches in b."""
+    aligned_tracks = []
+    aligned_rows = []
+    misaligned_tracks = []
+    misaligned_rows = []
 
     ours = list(a.tracks.values())
     pool = list(b.tracks.values())
@@ -403,32 +406,61 @@ def compare_albums(a: Album, b: Album) -> list[Track]:
     for track in ours:
         best, score, satisfied = find_best_match(track, pool)
         if not satisfied:
-            misaligned.append(format_track_comparison_row(track, best, score))
-        else:            
-            aligned.append(format_track_comparison_row(track, best, score))
+            misaligned_tracks.append(track)
+            misaligned_rows.append(format_track_comparison_row(track, best, score))
+        else:
+            aligned_tracks.append(track)
+            aligned_rows.append(format_track_comparison_row(track, best, score))
             pool.remove(best)
 
-    aligned.sort(key=lambda row: row[2], reverse=True)
-    misaligned.sort(key=lambda row: row[2], reverse=True)
+    # aligned_rows.sort(key=lambda row: row[2], reverse=True)
+    # misaligned_rows.sort(key=lambda row: row[2], reverse=True)
 
-    if misaligned:
+    if not misaligned_rows:
+        return matching.MatchState.MATCHED, []
+
+    else:
         print()
         print('Pretty sure about these:')
-        print(tabulate(aligned))
+        print(tabulate(aligned_rows))
         print('Not sure about these:')
-        print(tabulate(misaligned))
+        print(tabulate(misaligned_rows))
 
-        choice = input('k = accept these judgements; r = revise manually; Enter = leave album undecided').upper().strip()
-        while choice not in {'K', 'R', ''}:
+        p = 'k = accept these judgements; r = revise manually; m = album is a perfect match; x = leave album undecided: '
+        choice = input(p).upper().strip()
+        while choice not in {'K', 'R', 'M', 'X'}:
             print('Command not recognized')
-            choice = input('k = accept these judgements; r = revise manually; Enter = leave album undecided').upper().strip()
+            choice = input(p).upper().strip()
         
-        if choice == 'K':
-            pass
+        if choice == 'M':
+            return matching.MatchState.MATCHED, []
+        
+        elif choice == 'K':
+            return matching.MatchState.PARTIAL, [m[0] for m in misaligned_rows]
+        
         elif choice == 'R':
-            pass
-        else:
-            pass
+
+            revise_a = prompts.p_bool('Revise the ones I think are aligned')
+            if revise_a:
+                print('\n'.join([f'{e + 1:>2}.  {row[0]:<80} = {row[1]}' for (e, row) in enumerate(aligned_rows)]))
+                flips = input('Enter space-separated numbers to switch to non-matches: ')
+                for i in (int(flip) for flip in flips.split()):
+                    misaligned_tracks.append(aligned_tracks[i - 1])
+
+            revise_m = prompts.p_bool('Revise the ones I think are misaligned')
+            if revise_m:
+                print('\n'.join([f'{e + 1:>2}.  {row[0]:<80} x {row[1]}' for (e, row) in enumerate(misaligned_rows)]))
+                flips = input('Enter space-separated numbers to switch to matches: ')
+                for i in (int(flip) for flip in flips.split()):
+                    misaligned_tracks.remove(misaligned_tracks[i - 1])
+            
+            if misaligned_tracks:
+                return matching.MatchState.PARTIAL, misaligned_tracks
+            else:
+                return matching.MatchState.MATCHED, []
+        
+        elif choice == 'X':
+            return matching.MatchState.UNKNOWN, []
 
 def do_matches() -> None:
     decs, old, new = get_unknown_album_sets()
@@ -454,13 +486,18 @@ def do_matches() -> None:
 
         if choice == 'Y':
 
-            unmatched_tracks = compare_albums(a, b)
-            # input('hey but\n' + '\n'.join([str(t) for t in unmatched_tracks]))
+            state, unmatched_tracks = compare_albums(a, b)
+            match state:
+                case matching.MatchState.MATCHED:
+                    decs.append(matching.MatchDecision(a, b, matching.MatchState.MATCHED, score, tools.ts_now()))
+                    new.remove(b)
+                    n_matched += 1
 
-            decs.append(matching.MatchDecision(a, b, matching.MatchState.MATCHED, score, tools.ts_now()))
-            new.remove(b)
-            n_matched += 1
-        
+                case matching.MatchState.PARTIAL:
+                    decs.append(matching.MatchDecision(a, b, matching.MatchState.PARTIAL, score, tools.ts_now(), omit=unmatched_tracks[:]))
+                    new.remove(b)
+                    n_matched += 1
+            
         elif choice == 'N':
             decs.append(matching.MatchDecision(a, b, matching.MatchState.UNMATCHED, score, tools.ts_now()))
         
