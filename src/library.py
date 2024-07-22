@@ -68,7 +68,8 @@ class Album(Matchable):
         'folder_name': 6,
         'n_tracks': 2,
         'albumartists': 12,
-        'artists': 4
+        'artists': 4,
+        'duration': 6
     }
 
     def __init__(self: Album, path: Path, ts: int=0) -> None:
@@ -82,6 +83,7 @@ class Album(Matchable):
         for k in self.weights:
             self.data[k] = None
 
+        self.data['duration'] = 0
         self.data['n_tracks'] = 0        
         self.data['folder_name'] = self.path.name
         self.data['artists'] = set()
@@ -91,6 +93,7 @@ class Album(Matchable):
         self.data['n_tracks'] += 1
         self.data['artists'].add(t.data['artist'])
         self.data['albumartists'].add(t.data['albumartist'])
+        self.data['duration'] += t.data['duration']
 
     def present(self: Album) -> str:
         artist = sorted(self.data['albumartists'])[0]
@@ -167,7 +170,8 @@ class Track(Matchable):
         data['filename'] = path.stem
 
         for (k, v) in data.items():
-            data[k] = tools.normalize_title(v)
+            if isinstance(data[k], str):
+                data[k] = tools.normalize_title(v)
 
         return Track(path, data, ts=ts)
     

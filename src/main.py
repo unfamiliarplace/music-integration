@@ -13,8 +13,9 @@ from tabulate import tabulate
 class App:
 
     # Constants
-    THRESHOLD_CANDIDATE: float = 0.75
     THRESHOLD_CONFIDENT: float = 0.97
+    THRESHOLD_PROBABLE: float = 0.80
+    THRESHOLD_POSSIBLE: float = 0.65
     FAST_BATCH_SIZE: int = 40
     ALBUM_NAME_LENGTH: int = 60
 
@@ -50,233 +51,7 @@ class App:
         self.PATH_PICKLE_LIB_NEW = Path(f'{self.PATH_PICKLES}/lib_new.pickle')
         self.PATH_PICKLE_DECISIONS = Path(f'{self.PATH_PICKLES}/decisions.pickle')
 
-# Functions
-
-def manually_vet_matches():
-    matches = _unpickle(PATH_PICKLE_MATCHES, dict())
-    manual = _unpickle(PATH_PICKLE_MANUAL, set())
-
-    lib_old = _unpickle(PATH_PICKLE_LIB_OLD, dict())
-    lib_new = _unpickle(PATH_PICKLE_LIB_NEW, dict())
-
-    considerable = list(filter(lambda m: not m.manually_scored and m.score < THRESHOLD_CONFIDENT, matches.values()))
-    considerable = sorted(considerable, key=lambda m: m.sig())
-
-    if not considerable:
-        print('None left to manually vet')
-        return
-    
-    print(f'{len(considerable)} to go...')
-
-    i = 0
-    proceed = input('Hit Enter to see a match or Q to quit: ')
-    while (i < (len(considerable) - 1)) and (proceed.upper().strip() != 'Q'):
-        try:
-            print()
-
-            m = considerable[i]
-            n = 0
-
-            prompt = 'Is this a match?'
-
-            old_short = ' / '.join(m.track_old.path.parts[2:])
-            new_short = ' / '.join(m.track_new.path.parts[2:])
-
-            prompt += f'\n{m.score:.2f}\n\n{old_short}\n{new_short}\n\n'
-            result = prompts.p_bool(prompt + '\n')
-
-            m.manually_score(result)
-            if result:
-                manual.add(m.sig())
-                n += 1
-
-                old_sibs = get_track_siblings(lib_old, m.track_old)
-                new_sibs = get_track_siblings(lib_new, m.track_new)
-                further = {}
-
-                for sib in old_sibs:
-                    for other in new_sibs:
-                        sig = Match.sig_static(sib, other)
-                        if sig in matches and matches[sig] in considerable:
-                            further[sig] = matches[sig]
-                            break
-                
-                if further:
-
-                    print()
-                    print('Then are these also matches?')
-                    print()
-
-                    pairs = [
-                        (
-                        ' / '.join(m2.track_old.path.parts[-2:]),
-                        ' / '.join(m2.track_new.path.parts[-2:])
-                        )
-                        for m2 in further.values()]
-                    
-                    longest = max(pairs, key=lambda p: len(p[0]))
-
-                    for pair in sorted(pairs):
-                        p1, p2 = pair[0].ljust(len(longest[0])), pair[1]
-                        print(f'{p1}  =  {p2}')
-
-                    print()
-                    result_further = prompts.p_bool('(In this case NO does not manually score)')
-                    if result_further:
-                        for m2 in further.values():
-                            m2.manually_score(True)
-                            manual.add(m2.sig())
-                            n += 1
-                            i += 1
-
-                    print()
-
-                print(f'Confirmed {n} matches manually')
-            
-        except KeyboardInterrupt:
-            break
-        
-        print()
-        proceed = input('Hit Enter to see another match or Q to quit: ')
-
-        i += 1
-    
-    _pickle(matches, PATH_PICKLE_MATCHES)
-    _pickle(manual, PATH_PICKLE_MANUAL)
-
-def manually_vet_matches_fast():
-    matches = _unpickle(PATH_PICKLE_MATCHES, dict())
-    manual = _unpickle(PATH_PICKLE_MANUAL, set())
-
-    lib_old = _unpickle(PATH_PICKLE_LIB_OLD, dict())
-    lib_new = _unpickle(PATH_PICKLE_LIB_NEW, dict())
-
-    considerable = list(filter(lambda m: not m.manually_scored and m.score < THRESHOLD_CONFIDENT, matches.values()))
-
-    if not considerable:
-        print('None left to manually vet')
-        return
-
-    print(f'{len(considerable)} to go...')
-
-    i = 0
-    proceed = input('Hit Enter to see a batch of matches or Q to quit: ')
-    while considerable and (proceed.upper().strip() != 'Q'):
-
-        try:
-            ms = set()
-            for _ in range(FAST_BATCH_SIZE):
-                ms.add(considerable.pop(random.randrange(len(considerable))))
-                if not considerable:
-                    break
-
-            n = 0
-
-            print()
-            print('Are these all matches?')
-            print()
-
-            prompt_pairs = []
-            
-            for m in ms:
-                prompt_pairs.append(
-                    (
-                    ' / '.join(m.track_old.path.parts[2:]),
-                    ' / '.join(m.track_new.path.parts[2:])
-                    )
-                )
-
-            longest = max(prompt_pairs, key=lambda p: len(p[0]))
-
-            printed = 0
-            for pair in prompt_pairs:
-                p1, p2 = pair[0].ljust(len(longest[0])), pair[1]
-                print(f'{p1}  =  {p2}')
-
-                printed += 1
-                if not (printed % 5):
-                    print()
-
-            print()
-            result = prompts.p_bool('MATCHES (In this case NO does not manually score)')
-
-            if result:
-
-                further = {}
-                prompt_pairs = []
-
-                for m in ms:
-                    first_sib = True
-
-                    m.manually_score(result)
-                    manual.add(m.sig())
-                    n += 1
-
-                    old_sibs = get_track_siblings(lib_old, m.track_old)
-                    new_sibs = get_track_siblings(lib_new, m.track_new)
-
-                    for sib in old_sibs:
-                        for other in new_sibs:
-                            sig = Match.sig_static(sib, other)
-                            m2 = matches[sig]
-                            
-                            if sig in matches and m2 in considerable:                                
-                                further[sig] = m2
-                                
-                                if first_sib:
-                                    prompt_pairs.append(
-                                                    (
-                                        ' / '.join(m2.track_old.path.parts[-2:]),
-                                        ' / '.join(m2.track_new.path.parts[-2:])
-                                        )
-                                    )
-                                    first_sib = False
-
-                                break
-                
-                if further:
-
-                    print()
-                    print('First sibling of each? (N = change nothing)')
-                    print()
-                    
-                    longest = max(prompt_pairs, key=lambda p: len(p[0]))
-
-                    printed = 0
-                    for pair in prompt_pairs:
-                        p1, p2 = pair[0].ljust(len(longest[0])), pair[1]
-                        print(f'{p1}  =  {p2}')
-
-                        printed += 1
-                        if not (printed % 5):
-                            print()
-
-                    print()
-                    result_further = prompts.p_bool('SIBLINGS (In this case NO does not manually score)')
-                    if result_further:
-                        for m2 in further.values():
-                            m2.manually_score(True)
-
-                            m2_sig = m2.sig()
-
-                            if m2_sig not in manual:
-                                manual.add(m2_sig)
-                                n += 1                            
-
-                    print()
-
-                print(f'Confirmed {n} matches manually')
-            
-        except KeyboardInterrupt:
-            break
-        
-        print()
-        proceed = input('Hit Enter to see another batch or Q to quit: ')
-    
-    _pickle(matches, PATH_PICKLE_MATCHES)
-    _pickle(manual, PATH_PICKLE_MANUAL)
-
-# New functions
+#  Functions
 
 def get_libraries() -> tuple[Library]:
 
@@ -317,10 +92,10 @@ def find_best_match(a: matching.Matchable, pool: list[matching.Matchable]) -> tu
         score, _, _ = matching.score_similarity(a, b)
         # input(f'{str(b):<70} {score}')
 
-        if score > app.THRESHOLD_CONFIDENT:
+        if score >= app.THRESHOLD_CONFIDENT:
             return b, score, True
 
-        elif score > app.THRESHOLD_CANDIDATE:
+        elif score >= app.THRESHOLD_POSSIBLE:
             satisfied = True
 
         if score > best_score:
@@ -389,7 +164,7 @@ def fix_decs() -> None:
 def format_track_comparison_row(a: Track, b: Track, score: float) -> list[str]:
     cols = []
     cols.append(a.path.stem)
-    cols.append(b.path.stem)
+    cols.append(b.path.stem if b is not None else '')
     cols.append(f'{score:<.2f}')
     return cols
 
@@ -404,7 +179,7 @@ def compare_albums(a: Album, b: Album) -> tuple[matching.MatchState, list[Track]
     pool = list(b.tracks.values())
 
     for track in ours:
-        best, score, satisfied = find_best_match(track, pool)
+        best, score, satisfied = find_best_match(track, pool)        
         if not satisfied:
             misaligned_tracks.append(track)
             misaligned_rows.append(format_track_comparison_row(track, best, score))
@@ -433,7 +208,8 @@ def compare_albums(a: Album, b: Album) -> tuple[matching.MatchState, list[Track]
             choice = input(p).upper().strip()
         
         if choice == 'M':
-            return matching.MatchState.MATCHED, []
+            aligned_tracks.extend(misaligned_tracks)
+            misaligned_tracks = []
         
         elif choice == 'K':
             return matching.MatchState.PARTIAL, [m[0] for m in misaligned_rows]
@@ -445,14 +221,30 @@ def compare_albums(a: Album, b: Album) -> tuple[matching.MatchState, list[Track]
                 print('\n'.join([f'{e + 1:>2}.  {row[0]:<80} = {row[1]}' for (e, row) in enumerate(aligned_rows)]))
                 flips = input('Enter space-separated numbers to switch to non-matches: ')
                 for i in (int(flip) for flip in flips.split()):
-                    misaligned_tracks.append(aligned_tracks[i - 1])
+                    t = aligned_tracks[i - 1]
+                    r = aligned_rows[i - 1]
+                    aligned_tracks.remove(t)
+                    aligned_rows.remove(r)
+                    misaligned_tracks.append(t)
+                    misaligned_rows.append(r)
 
             revise_m = prompts.p_bool('Revise the ones I think are misaligned')
             if revise_m:
                 print('\n'.join([f'{e + 1:>2}.  {row[0]:<80} x {row[1]}' for (e, row) in enumerate(misaligned_rows)]))
                 flips = input('Enter space-separated numbers to switch to matches: ')
                 for i in (int(flip) for flip in flips.split()):
-                    misaligned_tracks.remove(misaligned_tracks[i - 1])
+                    t = misaligned_tracks[i - 1]                    
+                    r = misaligned_rows[i - 1]
+                    misaligned_tracks.remove(t)
+                    misaligned_rows.remove(r)
+                    aligned_tracks.append(t)
+                    aligned_rows.append(r)
+
+            print('Result after changes:')
+            print('Pretty sure about these:')
+            print(tabulate(aligned_rows))
+            print('Not sure about these:')
+            print(tabulate(misaligned_rows))
             
             if misaligned_tracks:
                 return matching.MatchState.PARTIAL, misaligned_tracks
@@ -466,21 +258,23 @@ def do_matches() -> None:
     decs, old, new = get_unknown_album_sets()
     report_progress(len(decs), len(old), len(new))
 
-    print('y = match; n = matchless; q = stop for now; Enter = no decision.\n')
+    print('y = match; n = matchless; q = stop for now; s = save; Enter = no decision.\n')
 
     n_matched = 0
     for a in old:
-        b, score, satisfied = find_best_match(a, new)
+        b, score, _ = find_best_match(a, new)
 
-        if satisfied:
+        if score >= app.THRESHOLD_CONFIDENT:
+            p_word = 'CONFIDENT!!'
+        elif score >= app.THRESHOLD_PROBABLE:
             p_word = 'LIKELY!!!!!'
         else:
-            p_word = 'IMPROBABLE!'
+            p_word = 'A STRETCH!!'
 
         p = f'{a.present():<80} {b.present():<80} {p_word} {score:<.2f} ::: '
 
         choice = input(p).upper().strip()
-        while choice not in {'Y', '', 'N', 'Q'}:
+        while choice not in {'Y', '', 'N', 'Q', 'S'}:
             print('\nUnrecognized decision.')
             choice = input(p).upper().strip()
 
@@ -500,6 +294,10 @@ def do_matches() -> None:
             
         elif choice == 'N':
             decs.append(matching.MatchDecision(a, b, matching.MatchState.UNMATCHED, score, tools.ts_now()))
+
+        elif choice == 'S':
+            report_progress(len(decs), len(old) - n_matched, len(new))
+            _pickle(decs, app.PATH_PICKLE_DECISIONS)
         
         elif choice == 'Q':
             break
