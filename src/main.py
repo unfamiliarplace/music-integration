@@ -83,7 +83,7 @@ def get_libraries_dev() -> tuple[Library]:
 
     return old, new
 
-def find_best_match(a: matching.Matchable, pool: list[matching.Matchable]) -> tuple[matching.Matchable, float, bool]:
+def find_best_match(a: matching.Matchable, pool: list[matching.Matchable], allow_unlikely: bool=True) -> tuple[matching.Matchable, float, bool]:
     best = None
     best_score = 0.0
     satisfied = False
@@ -179,7 +179,7 @@ def compare_albums(a: Album, b: Album) -> tuple[matching.MatchState, list[Track]
     pool = list(b.tracks.values())
 
     for track in ours:
-        best, score, satisfied = find_best_match(track, pool)        
+        best, score, satisfied = find_best_match(track, pool, allow_unlikely=False)        
         if not satisfied:
             misaligned_tracks.append(track)
             misaligned_rows.append(format_track_comparison_row(track, best, score))
@@ -209,7 +209,17 @@ def compare_albums(a: Album, b: Album) -> tuple[matching.MatchState, list[Track]
         
         if choice == 'M':
             aligned_tracks.extend(misaligned_tracks)
+            aligned_rows.extend(misaligned_rows)
             misaligned_tracks = []
+            misaligned_rows = []
+
+            print('Result after changes:')
+            print('Pretty sure about these:')
+            print(tabulate(aligned_rows))
+            print('Not sure about these:')
+            print(tabulate(misaligned_rows))
+
+            return matching.MatchState.MATCHED, []
         
         elif choice == 'K':
             return matching.MatchState.PARTIAL, [m[0] for m in misaligned_rows]
@@ -218,27 +228,45 @@ def compare_albums(a: Album, b: Album) -> tuple[matching.MatchState, list[Track]
 
             revise_a = prompts.p_bool('Revise the ones I think are aligned')
             if revise_a:
+                ts_to_remove = []
+                rs_to_remove = []
+
                 print('\n'.join([f'{e + 1:>2}.  {row[0]:<80} = {row[1]}' for (e, row) in enumerate(aligned_rows)]))
                 flips = input('Enter space-separated numbers to switch to non-matches: ')
                 for i in (int(flip) for flip in flips.split()):
                     t = aligned_tracks[i - 1]
                     r = aligned_rows[i - 1]
-                    aligned_tracks.remove(t)
-                    aligned_rows.remove(r)
+
+                    ts_to_remove.append(t)
+                    rs_to_remove.append(r)
                     misaligned_tracks.append(t)
                     misaligned_rows.append(r)
+                
+                for t in ts_to_remove:                    
+                    aligned_tracks.remove(t)
+                for r in rs_to_remove:
+                    aligned_rows.remove(r)
 
             revise_m = prompts.p_bool('Revise the ones I think are misaligned')
             if revise_m:
+                ts_to_remove = []
+                rs_to_remove = []
+
                 print('\n'.join([f'{e + 1:>2}.  {row[0]:<80} x {row[1]}' for (e, row) in enumerate(misaligned_rows)]))
                 flips = input('Enter space-separated numbers to switch to matches: ')
                 for i in (int(flip) for flip in flips.split()):
                     t = misaligned_tracks[i - 1]                    
                     r = misaligned_rows[i - 1]
-                    misaligned_tracks.remove(t)
-                    misaligned_rows.remove(r)
+
+                    ts_to_remove.append(t)
+                    rs_to_remove.append(r)
                     aligned_tracks.append(t)
                     aligned_rows.append(r)
+                
+                for t in ts_to_remove:      
+                    misaligned_tracks.remove(t)
+                for r in rs_to_remove:
+                    misaligned_rows.remove(r)
 
             print('Result after changes:')
             print('Pretty sure about these:')
