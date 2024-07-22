@@ -261,7 +261,9 @@ def do_matches() -> None:
     print('y = match; n = matchless; q = stop for now; s = save; Enter = no decision.\n')
 
     n_matched = 0
-    for a in old:
+    i = 0
+    while i < len(old):
+        a = old[i]
         b, score, _ = find_best_match(a, new)
 
         if score >= app.THRESHOLD_CONFIDENT:
@@ -298,9 +300,12 @@ def do_matches() -> None:
         elif choice == 'S':
             report_progress(len(decs), len(old) - n_matched, len(new))
             _pickle(decs, app.PATH_PICKLE_DECISIONS)
+            i -= 1
         
         elif choice == 'Q':
             break
+
+        i += 1
 
     report_progress(len(decs), len(old) - n_matched, len(new))
     _pickle(decs, app.PATH_PICKLE_DECISIONS)
