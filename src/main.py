@@ -256,6 +256,7 @@ def compare_albums(a: Album, b: Album) -> tuple[matching.MatchState, list[Track]
 
 def do_matches() -> None:
     decs, old, new = get_unknown_album_sets()
+    old = list(old)
     report_progress(len(decs), len(old), len(new))
 
     print('y = match; n = matchless; q = stop for now; s = save; Enter = no decision.\n')
