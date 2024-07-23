@@ -3,7 +3,7 @@ from pathlib import Path
 from library import Album, Library, Track
 import matching
 import prompts
-import random
+import os
 from tools import _pickle, _unpickle
 import tools
 from tabulate import tabulate
@@ -298,7 +298,7 @@ def do_matches() -> None:
     old = list(old)
     report_progress(len(decs), len(old), len(new))
 
-    print('y = match; n = matchless; q = stop for now; s = save; Enter = no decision.\n')
+    print('y = match; n = matchless; e = open folders; q = stop for now; s = save; Enter = no decision.\n')
 
     n_matched = 0
     i = 0
@@ -328,7 +328,7 @@ def do_matches() -> None:
             continue
 
         choice = input(p).upper().strip()
-        while choice not in {'Y', '', 'N', 'Q', 'S'}:
+        while choice not in {'Y', '', 'N', 'E', 'Q', 'S'}:
             print('\nUnrecognized decision.')
             choice = input(p).upper().strip()
 
@@ -345,6 +345,11 @@ def do_matches() -> None:
                     decs.append(matching.MatchDecision(a, b, matching.MatchState.PARTIAL, score, tools.ts_now(), omit=unmatched_tracks[:]))
                     new.remove(b)
                     n_matched += 1
+
+        elif choice == 'E':
+            os.startfile(a.path)
+            os.startfile(b.path)
+            continue
             
         elif choice == 'N':
             decs.append(matching.MatchDecision(a, b, matching.MatchState.UNMATCHED, score, tools.ts_now()))
@@ -352,7 +357,7 @@ def do_matches() -> None:
         elif choice == 'S':
             report_progress(len(decs), len(old) - n_matched, len(new))
             _pickle(decs, app.PATH_PICKLE_DECISIONS)
-            i -= 1
+            continue
         
         elif choice == 'Q':
             break
