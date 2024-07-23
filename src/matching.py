@@ -9,7 +9,6 @@ class MatchState(Enum):
     MATCHED = 1
     PARTIAL = 2
     UNMATCHED = 3
-    ERROR = 4
 
 class Matchable:
     data: dict[str, object]
@@ -74,11 +73,6 @@ def compare(a: object, b: object) -> float:
         n = compare_numbers(a, b)
     elif isinstance(a, Iterable):
         n = compare_iterables(a, b)
-    elif a is None or b is None:
-        print('Nones...')
-        print(a)
-        print(b)
-        return 0
     else:
         raise TypeError(f'trying to compare {a}, type {type(a)}')
 

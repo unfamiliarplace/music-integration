@@ -313,22 +313,7 @@ def do_matches() -> None:
         else:
             p_word = 'A STRETCH!!'
 
-        # TODO
-        if (a is None) or (b is None):
-            i += 1
-            continue
-
-        # TODO
-        try:
-            p = f'{a.present():<80} {b.present():<80} {p_word} {score:<.2f} ::: '
-        except Exception as e:
-            print('\n\n')
-            print(a, '\n',  a.data)
-            print('\n\n')
-            print('Error encountered. Skipping choice')
-            print(e)
-            i += 1
-            continue
+        p = f'{a.present():<80} {b.present():<80} {p_word} {score:<.2f} ::: '
 
         choice = input(p).upper().strip()
         while choice not in {'Y', '', 'N', 'E', 'Q', 'S'}:
