@@ -78,6 +78,7 @@ def compare(a: object, b: object) -> float:
         print('Nones...')
         print(a)
         print(b)
+        return 0
     else:
         raise TypeError(f'trying to compare {a}, type {type(a)}')
 

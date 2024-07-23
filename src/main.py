@@ -95,7 +95,7 @@ def find_best_match(a: matching.Matchable, pool: list[matching.Matchable], allow
         if score >= app.THRESHOLD_CONFIDENT:
             return b, score, True
 
-        elif score >= app.THRESHOLD_POSSIBLE:
+        elif (score >= app.THRESHOLD_PROBABLE) or (allow_unlikely and (score >= app.THRESHOLD_POSSIBLE)):
             satisfied = True
 
         if score > best_score:
@@ -112,6 +112,9 @@ def get_unknown_album_sets() -> tuple[list[matching.MatchDecision], list[Album],
     for dec in decs:
         match dec.state:
             case matching.MatchState.MATCHED:
+                del all_old[dec.old.path]
+                del all_new[dec.new.path]
+            case matching.MatchState.PARTIAL:
                 del all_old[dec.old.path]
                 del all_new[dec.new.path]
             case matching.MatchState.UNMATCHED:
@@ -179,7 +182,8 @@ def compare_albums(a: Album, b: Album) -> tuple[matching.MatchState, list[Track]
     pool = list(b.tracks.values())
 
     for track in ours:
-        best, score, satisfied = find_best_match(track, pool, allow_unlikely=False)        
+        best, score, satisfied = find_best_match(track, pool, allow_unlikely=False)
+
         if not satisfied:
             misaligned_tracks.append(track)
             misaligned_rows.append(format_track_comparison_row(track, best, score))
@@ -301,6 +305,11 @@ def do_matches() -> None:
             p_word = 'LIKELY!!!!!'
         else:
             p_word = 'A STRETCH!!'
+
+        # TODO
+        if (a is None) or (b is None):
+            i += 1
+            continue
 
         p = f'{a.present():<80} {b.present():<80} {p_word} {score:<.2f} ::: '
 
