@@ -114,9 +114,11 @@ def get_unknown_album_sets() -> tuple[list[matching.MatchDecision], list[Album],
             case matching.MatchState.MATCHED:
                 del all_old[dec.old.path]
                 del all_new[dec.new.path]
+
             case matching.MatchState.PARTIAL:
                 del all_old[dec.old.path]
                 del all_new[dec.new.path]
+
             case matching.MatchState.UNMATCHED:
                 del all_old[dec.old.path]
 
@@ -146,13 +148,18 @@ def undo_decision() -> None:
         print('None found')
         return
 
-    opt = prompts.p_choice('Choose one to delete, or Enter to cancel', [str(d) for d in opts], allow_blank=True)
-    if not opt:
+    print('\n'.join([f'{e + 1:>2}.  {str(opt)}' for (e, opt) in enumerate(opts)]))
+    undos = input('Enter space-separated numbers to delete, or Enter to cancel: ')
+    if not undos:
         print('Cancelled')
         return
     else:
-        print('Removed')
-        decs.remove(opts[opt - 1])
+        undos = undos.split()
+        for i in (int(undo) for undo in undos):
+            t = opts[i - 1]
+            decs.remove(t)
+
+        print(f'Removed {len(undos)} decisions')
 
     _pickle(decs, app.PATH_PICKLE_DECISIONS)
 
