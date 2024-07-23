@@ -322,6 +322,9 @@ def do_matches() -> None:
         try:
             p = f'{a.present():<80} {b.present():<80} {p_word} {score:<.2f} ::: '
         except Exception as e:
+            print('\n\n')
+            print(a, '\n',  a.data)
+            print('\n\n')
             print('Error encountered. Skipping choice')
             print(e)
             i += 1

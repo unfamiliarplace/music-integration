@@ -91,8 +91,10 @@ class Album(Matchable):
 
     def update_data(self: Album, t: Track) -> None:
         self.data['n_tracks'] += 1
-        self.data['artists'].add(t.data['artist'])
-        self.data['albumartists'].add(t.data['albumartist'])
+        if t.data['artist'] is not None:
+            self.data['artists'].add(t.data['artist'])
+        if t.data['albumartist'] is not None:
+            self.data['albumartists'].add(t.data['albumartist'])
         self.data['duration'] += t.data['duration']
 
     def present(self: Album) -> str:
@@ -164,7 +166,7 @@ class Track(Matchable):
             'duration': tags.duration
         }
 
-        if fill_gaps and (data['albumartist'] is None):
+        if fill_gaps and (data['albumartist'] is None) and (data['artist'] is not None):
             data['albumartist'] = data['artist']
 
         data['filename'] = path.stem
