@@ -318,7 +318,14 @@ def do_matches() -> None:
             i += 1
             continue
 
-        p = f'{a.present():<80} {b.present():<80} {p_word} {score:<.2f} ::: '
+        # TODO
+        try:
+            p = f'{a.present():<80} {b.present():<80} {p_word} {score:<.2f} ::: '
+        except Exception as e:
+            print('Error encountered. Skipping choice')
+            print(e)
+            i += 1
+            continue
 
         choice = input(p).upper().strip()
         while choice not in {'Y', '', 'N', 'Q', 'S'}:
