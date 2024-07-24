@@ -35,6 +35,7 @@ class App:
     PATH_PICKLE_LIB_OLD: Path
     PATH_PICKLE_LIB_NEW: Path
     PATH_PICKLE_DECISIONS: Path
+    PATH_PICKLE_DECISIONS_BACKUP: Path
 
     def load_configuration(self: App) -> None:
 
@@ -58,6 +59,7 @@ class App:
         self.PATH_PICKLE_LIB_OLD = Path(f'{self.PATH_PICKLES}/lib_old.pickle')
         self.PATH_PICKLE_LIB_NEW = Path(f'{self.PATH_PICKLES}/lib_new.pickle')
         self.PATH_PICKLE_DECISIONS = Path(f'{self.PATH_PICKLES}/decisions.pickle')
+        self.PATH_PICKLE_DECISIONS_BACKUP = Path(f'{self.PATH_PICKLES}/decisions_backup.pickle')
 
 #  Functions
 
@@ -163,13 +165,22 @@ def get_unknown_album_sets() -> tuple[list[matching.MatchDecision], list[Album],
         match dec.state:
             case matching.MatchState.MATCHED:
                 del all_old[dec.old.path]
-                del all_new[dec.new.path]
+
+                # Possible for multiple olds to be covered by one new
+                if dec.new.path in all_new:
+                    del all_new[dec.new.path]
 
             case matching.MatchState.PARTIAL:
                 del all_old[dec.old.path]
-                del all_new[dec.new.path]
+
+                # Possible for multiple olds to be covered by one new
+                if dec.new.path in all_new:
+                    del all_new[dec.new.path]
 
             case matching.MatchState.UNMATCHED:
+                del all_old[dec.old.path]
+
+            case matching.MatchState.CONFIRMED_UNMATCHED:
                 del all_old[dec.old.path]
 
     return decs, set(all_old.values()), set(all_new.values())
@@ -218,11 +229,30 @@ def undo_decision() -> None:
 
     _pickle(decs, app.PATH_PICKLE_DECISIONS)
 
-def fix_decs() -> None:
+def delete_outdated_decs() -> list[matching.MatchDecision]:
     decs = _unpickle(app.PATH_PICKLE_DECISIONS, [])
+    _pickle(decs, app.PATH_PICKLE_DECISIONS_BACKUP)
+
+    latest = {}
+    for dec in decs:
+        p = str(dec.old.path)
+        if p not in latest:
+            latest[p] = dec
+        elif dec.ts_made > latest[p].ts_made:
+            latest[p] = dec
+    
+    news = sorted(latest.values(), key=lambda d: d.ts_made)
+    print(f'Eliminated {len(decs) - len(news)} outdated decisions')
+    _pickle(news, app.PATH_PICKLE_DECISIONS)
+
+def update_decs_version() -> None:
+    decs = _unpickle(app.PATH_PICKLE_DECISIONS, [])
+    _pickle(news, app.PATH_PICKLE_DECISIONS_BACKUP)
+
     news = []
     for d in decs:
         news.append(matching.MatchDecision.remake(d))
+
     _pickle(news, app.PATH_PICKLE_DECISIONS)
 
 def format_track_comparison_row(a: Track, b: Track, score: float) -> list[str]:
@@ -412,9 +442,10 @@ def check_unmatched() -> None:
             _pickle(decs, app.PATH_PICKLE_DECISIONS)
         
         elif choice == 'Q':
-            report_progess_unmatched(len(unm) - n_decided)
-            _pickle(decs, app.PATH_PICKLE_DECISIONS)
             break
+    
+    report_progess_unmatched(len(unm) - n_decided)
+    _pickle(decs, app.PATH_PICKLE_DECISIONS)
 
 def do_unknown_matches() -> None:    
     decs, old, new = get_unknown_album_sets()
@@ -471,9 +502,10 @@ def do_unknown_matches() -> None:
             continue
         
         elif choice == 'Q':
-            report_progress_unknown(len(decs), len(old) - n_matched, len(new))
-            _pickle(decs, app.PATH_PICKLE_DECISIONS)
             break
+
+    report_progress_unknown(len(decs), len(old) - n_matched, len(new))
+    _pickle(decs, app.PATH_PICKLE_DECISIONS)
 
 def retry_unmatched() -> None:
     print('Not implemented yet')
@@ -488,7 +520,8 @@ def run():
         check_unmatched,
         print_decisions,
         undo_decision,
-        fix_decs,
+        update_decs_version,
+        delete_outdated_decs
     ]
 
     program = prompts.p_choice('Choose program', [c.__name__ for c in choices], allow_blank=True)
