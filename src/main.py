@@ -133,6 +133,32 @@ def find_best_matches(a: matching.Matchable, pool: list[matching.Matchable], n: 
     
     return results
 
+def get_unmatched_track_sets() -> tuple[list[matching.MatchDecision], list[Track], list[Track]]:
+    decs = _unpickle(app.PATH_PICKLE_DECISIONS, [])
+    lib_old, lib_new = get_libraries()
+    all_old, all_new = lib_old.tracks.copy(), lib_new.tracks.copy()
+
+    for dec in decs:
+        match dec.state:
+            case matching.MatchState.MATCHED:
+                for key in dec.old.tracks:
+                    del all_old[key]
+
+            case matching.MatchState.PARTIAL:
+                for key in dec.old.tracks:
+                    pass
+
+                del all_old[dec.old.path]
+                # del all_new[dec.new.path]
+
+            case matching.MatchState.UNKNOWN:
+                del all_old[dec.old.path]
+
+            case matching.MatchState.CONFIRMED_UNMATCHED:
+                del all_old[dec.old.path]
+
+    return decs, set(all_old.values()), set(all_new.values())
+
 def get_unmatched_album_sets() -> tuple[list[matching.MatchDecision], list[Album], list[Album]]:
     decs = _unpickle(app.PATH_PICKLE_DECISIONS, [])
     lib_old, lib_new = get_libraries()
@@ -247,7 +273,7 @@ def delete_outdated_decs() -> list[matching.MatchDecision]:
 
 def update_decs_version() -> None:
     decs = _unpickle(app.PATH_PICKLE_DECISIONS, [])
-    _pickle(news, app.PATH_PICKLE_DECISIONS_BACKUP)
+    _pickle(decs, app.PATH_PICKLE_DECISIONS_BACKUP)
 
     news = []
     for d in decs:
@@ -319,7 +345,7 @@ def compare_albums(a: Album, b: Album) -> tuple[matching.MatchState, list[Track]
             return matching.MatchState.MATCHED, []
         
         elif choice == 'K':
-            return matching.MatchState.PARTIAL, [m[0] for m in misaligned_rows]
+            return matching.MatchState.PARTIAL, misaligned_tracks
         
         elif choice == 'R':
 
@@ -381,6 +407,9 @@ def compare_albums(a: Album, b: Album) -> tuple[matching.MatchState, list[Track]
         
         elif choice == 'X':
             return matching.MatchState.UNKNOWN, []
+        
+def do_track_escapees() -> None:
+    pass
 
 def check_unmatched() -> None:
     decs, unm, new = get_unmatched_album_sets()

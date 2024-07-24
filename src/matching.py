@@ -27,7 +27,7 @@ class MatchDecision:
     ts_made: int
     omit: list[Matchable]
 
-    def __init__(self: MatchDecision, old: Matchable, new: Matchable, state: MatchState, score: float, ts: int=0, omit: list[Matchable]=[]) -> None:
+    def __init__(self: MatchDecision, old: Matchable, new: Matchable, state: MatchState, score: float, ts: int=0, omit: dict[str, Matchable]=[]) -> None:
         self.old, self.new = old, new
         self.state, self.score = state, score
         self.ts_made = ts
@@ -35,7 +35,21 @@ class MatchDecision:
 
     @staticmethod
     def remake(d: MatchDecision) -> MatchDecision:
-        return MatchDecision(d.old, d.new, d.state, d.score, d.ts_made, d.omit)
+        omit = d.omit
+        omit2 = omit
+        if omit and not isinstance(omit, dict):
+            omit2 = {}
+
+            for v in omit:
+                if isinstance(v, str):
+                    for t in d.old.tracks.values():
+                        if t.path.stem == v:
+                            break
+                else:
+                    t = v
+                    
+            omit2[str(t.path)] = t
+        return MatchDecision(d.old, d.new, d.state, d.score, d.ts_made, omit2)
 
     def present(self: MatchDecision) -> str:
         second_part = ''
