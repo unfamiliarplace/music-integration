@@ -365,10 +365,6 @@ def check_unmatched() -> None:
     while i < len(unm):
         a = unm[i]
         print(a.present())
-        
-        if 'blue album' not in a.present().lower():
-            i += 1
-            continue
 
         best = find_best_matches(a, new)
         for (n, pair) in enumerate(best):
@@ -383,7 +379,6 @@ def check_unmatched() -> None:
             choice = input(p).upper().strip()
 
         choice = m.group(0)
-        print(choice)
 
         if choice.startswith('M'):
             n = int(choice.split()[1])
