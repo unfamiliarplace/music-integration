@@ -386,7 +386,6 @@ def check_unmatched() -> None:
 
             state, unmatched_tracks = compare_albums(a, b)
             decs.append(matching.MatchDecision(a, b, state, score, tools.ts_now(), omit=unmatched_tracks[:]))
-            new.remove(b)
             print(f'Marked as matched with {b.present()}')
             print()
 
