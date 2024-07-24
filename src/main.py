@@ -266,7 +266,7 @@ def compare_albums(a: Album, b: Album) -> tuple[matching.MatchState, list[Track]
         print('Not sure about these:')
         print(tabulate(misaligned_rows))
 
-        p = 'k = accept these judgements; r = revise manually; m = album is a perfect match; n = album is confirmed unmatched; x = leave album undecided: '
+        p = 'k = accept these judgements; r = revise manually; m = album is a perfect match; n = album is unmatched; x = leave album undecided: '
         choice = input(p).upper().strip()
         while (choice) and not (m := re.match(app.RE_COMPARE, choice)):
             print('\nUnrecognized decision.')
@@ -345,6 +345,9 @@ def compare_albums(a: Album, b: Album) -> tuple[matching.MatchState, list[Track]
                 return matching.MatchState.PARTIAL, misaligned_tracks
             else:
                 return matching.MatchState.MATCHED, []
+            
+        elif choice == 'N':
+            return matching.MatchState.UNMATCHED, []
         
         elif choice == 'X':
             return matching.MatchState.UNKNOWN, []
