@@ -24,7 +24,8 @@ class App:
 
     RE_UNKNOWN = r'Y|N|E|Q|S'
     RE_UNMATCHED = r'(N)|(M \d+)|(E \d+)|(Q)|(S)'
-
+    RE_COMPARE = r'K|R|M|X|N'
+    
     # Configurables
     PATH_LIB_OLD: Path
     PATH_LIB_NEW: Path
@@ -265,11 +266,13 @@ def compare_albums(a: Album, b: Album) -> tuple[matching.MatchState, list[Track]
         print('Not sure about these:')
         print(tabulate(misaligned_rows))
 
-        p = 'k = accept these judgements; r = revise manually; m = album is a perfect match; x = leave album undecided: '
+        p = 'k = accept these judgements; r = revise manually; m = album is a perfect match; n = album is confirmed unmatched; x = leave album undecided: '
         choice = input(p).upper().strip()
-        while choice not in {'K', 'R', 'M', 'X'}:
-            print('Command not recognized')
+        while (choice) and not (m := re.match(app.RE_COMPARE, choice)):
+            print('\nUnrecognized decision.')
             choice = input(p).upper().strip()
+
+        choice = m.group(0)
         
         if choice == 'M':
             aligned_tracks.extend(misaligned_tracks)
@@ -361,9 +364,9 @@ def check_unmatched() -> None:
         print(a.present())
 
         best = find_best_matches(a, new)
-        for (i, pair) in enumerate(best):
+        for (n, pair) in enumerate(best):
             score, option = pair
-            print(f'\t{i + 1:>2}.   {score:<.2f} : {option.present()}')
+            print(f'\t{n + 1:>2}.   {score:<.2f} : {option.present()}')
         print()
         
         p = 'Decision: '
@@ -379,7 +382,7 @@ def check_unmatched() -> None:
             b = best[n - 1][1]
 
             state, unmatched_tracks = compare_albums(a, b)
-            decs.append(matching.MatchDecision(a, b, state, score, tools.ts_now()), omit=unmatched_tracks[:])
+            decs.append(matching.MatchDecision(a, b, state, score, tools.ts_now(), omit=unmatched_tracks[:]))
             new.remove(b)
             print(f'Marked as matched with {b.present()}')
             print()
@@ -392,7 +395,6 @@ def check_unmatched() -> None:
             b = best[n - 1][1]
             os.startfile(a.path)
             os.startfile(b.path)
-            continue
             
         elif choice == 'N':
             decs.append(matching.MatchDecision(a, None, matching.MatchState.CONFIRMED_UNMATCHED, score, tools.ts_now()))
@@ -405,7 +407,6 @@ def check_unmatched() -> None:
         elif choice == 'S':
             report_progess_unmatched(len(unm) - n_decided)
             _pickle(decs, app.PATH_PICKLE_DECISIONS)
-            continue
         
         elif choice == 'Q':
             report_progess_unmatched(len(unm) - n_decided)
@@ -446,7 +447,7 @@ def do_unknown_matches() -> None:
         if choice == 'Y':
             state, unmatched_tracks = compare_albums(a, b)
 
-            decs.append(matching.MatchDecision(a, b, state, score, tools.ts_now()), omit=unmatched_tracks[:])
+            decs.append(matching.MatchDecision(a, b, state, score, tools.ts_now(), omit=unmatched_tracks[:]))
             new.remove(b)
 
             n_matched += 1
