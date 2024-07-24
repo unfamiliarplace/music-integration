@@ -111,14 +111,19 @@ def find_best_match_strict(a: matching.Matchable, pool: list[matching.Matchable]
 
     return best, best_score
 
-def find_best_match(a: matching.Matchable, pool: list[matching.Matchable], allow_unlikely: bool=True, newer_only: bool=False, newest_ts: int=0) -> tuple[matching.Matchable, float, bool]:
+def find_best_match(a: matching.Matchable, pool: list[matching.Matchable], allow_unlikely: bool=True, newer_only: bool=False, dec_ts: int=0) -> tuple[matching.Matchable, float, bool]:
     best = None
     best_score = 0.0
     satisfied = False
 
     for b in pool:
 
-        if newer_only and (b.ts_seen <= newest_ts):
+        if newer_only:
+            print(b.ts_seen)
+            print(dec_ts)
+            print()
+
+        if newer_only and (b.ts_seen <= dec_ts):
             continue
 
         score, _, _ = matching.score_similarity(a, b)
@@ -181,8 +186,15 @@ def get_unmatched_album_sets_for_newer() -> tuple[list[matching.MatchDecision], 
     for dec in decs:
         match dec.state:
             case matching.MatchState.MATCHED:
-                del all_old[dec.old.path]
-                del all_new[dec.new.path]
+                try:
+                    del all_old[dec.old.path]
+                except:
+                    pass
+
+                try:
+                    del all_new[dec.new.path]
+                except:
+                    pass
 
     return decs, set(all_old.values()), set(all_new.values())
 
@@ -194,18 +206,28 @@ def get_unmatched_album_sets() -> tuple[list[matching.MatchDecision], list[Album
     for dec in decs:
         match dec.state:
             case matching.MatchState.MATCHED:
-                del all_old[dec.old.path]
-                # del all_new[dec.new.path]
+                try:
+                    del all_old[dec.old.path]
+                except:
+                    pass
 
             case matching.MatchState.PARTIAL:
-                del all_old[dec.old.path]
-                # del all_new[dec.new.path]
+                try:
+                    del all_old[dec.old.path]
+                except:
+                    pass
 
             case matching.MatchState.UNKNOWN:
-                del all_old[dec.old.path]
+                try:
+                    del all_old[dec.old.path]
+                except:
+                    pass
 
             case matching.MatchState.CONFIRMED_UNMATCHED:
-                del all_old[dec.old.path]
+                try:
+                    del all_old[dec.old.path]
+                except:
+                    pass
 
     return decs, set(all_old.values()), set(all_new.values())
 
@@ -551,6 +573,8 @@ def check_unknown_all() -> None:
     check_unknown()
 
 def check_unknown_newer() -> None:
+    print('This functionality does not work yet because timestamps were not saved properly')
+    return
     check_unknown(newer_only=True)
 
 def check_unmatched() -> None:
@@ -644,7 +668,10 @@ def check_unknown(newer_only: bool=False) -> None:
                     if dec.ts_made > newest_ts:
                         newest_ts = dec.ts_made
 
-            b, score, _ = find_best_match(a, new, newer_only=True, newest_ts=newest_ts)
+            if newest_ts == 0:
+                b = None
+            else:
+                b, score, _ = find_best_match(a, new, newer_only=True, dec_ts=newest_ts)
         else:
             b, score, _ = find_best_match(a, new)
 
