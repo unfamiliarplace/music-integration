@@ -356,7 +356,7 @@ def check_unmatched() -> None:
     decs, unm, new = get_unmatched_album_sets()
     report_progess_unmatched(len(unm))
 
-    print('n = confirm no match; m # = matched after all; e # = open folders; q = stop for now; s = save; Enter = remove decision.\n')
+    print('n = confirm no match; m # = matched after all; e # = open folders; q = stop for now; s = save\n')
 
     unm = list(unm)
     n_decided = 0
@@ -374,7 +374,7 @@ def check_unmatched() -> None:
         
         p = 'Decision: '
         choice = input(p).upper().strip()
-        while (choice) and not (m := re.match(app.RE_UNMATCHED, choice)):
+        while not (m := re.match(app.RE_UNMATCHED, choice)):
             print('\nUnrecognized decision.')
             choice = input(p).upper().strip()
 
