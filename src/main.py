@@ -23,7 +23,7 @@ class App:
     PATH_CONFIG: Path = Path('src/config.ini')
 
     RE_UNKNOWN = r'Y|N|E|Q|S'
-    RE_UNMATCHED = r'(N)|(M \d+)|(E)|(E \d+)|(Q)|(S)'
+    RE_UNMATCHED = r'(N)|(M \d+)|(E \d+)|(Q)|(S)'
     RE_COMPARE = r'K|R|M|X|N'
     
     # Configurables
@@ -393,14 +393,12 @@ def check_unmatched() -> None:
             n_decided += 1
             i += 1
 
-        elif choice == 'E':
-            os.startfile(a.path)
-
         elif choice.startswith('E'):
-            n = int(choice.split()[1])
-            b = best[n - 1][1]
             os.startfile(a.path)
-            os.startfile(b.path)
+            n = int(choice.split()[1])
+            if n != 0:
+                b = best[n - 1][1]
+                os.startfile(b.path)
             
         elif choice == 'N':
             decs.append(matching.MatchDecision(a, None, matching.MatchState.CONFIRMED_UNMATCHED, score, tools.ts_now()))
