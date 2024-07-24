@@ -9,6 +9,7 @@ import tools
 from tabulate import tabulate
 import re
 import progressbar
+import concurrent.futures
 
 # God app :')
 
@@ -16,7 +17,7 @@ class App:
 
     # Constants
     THRESHOLD_CONFIDENT: float = 0.97
-    THRESHOLD_PROBABLE: float = 0.80
+    THRESHOLD_PROBABLE: float = 0.85
     THRESHOLD_POSSIBLE: float = 0.65
     FAST_BATCH_SIZE: int = 40
     ALBUM_NAME_LENGTH: int = 60
@@ -104,18 +105,22 @@ def find_best_match_strict(a: matching.Matchable, pool: list[matching.Matchable]
     for b in pool:
         score, _, _ = matching.score_similarity(a, b)
 
-        if score >= app.THRESHOLD_CONFIDENT:
+        if score >= app.THRESHOLD_PROBABLE:
             best = b
             best_score = score
 
     return best, best_score
 
-def find_best_match(a: matching.Matchable, pool: list[matching.Matchable], allow_unlikely: bool=True) -> tuple[matching.Matchable, float, bool]:
+def find_best_match(a: matching.Matchable, pool: list[matching.Matchable], allow_unlikely: bool=True, newer_only: bool=False, newest_ts: int=0) -> tuple[matching.Matchable, float, bool]:
     best = None
     best_score = 0.0
     satisfied = False
 
     for b in pool:
+
+        if newer_only and (b.ts_seen <= newest_ts):
+            continue
+
         score, _, _ = matching.score_similarity(a, b)
         # input(f'{str(b):<70} {score}')
 
@@ -168,6 +173,19 @@ def get_unmatched_track_sets() -> tuple[list[matching.MatchDecision], list[Track
 
     return decs, set(all_old.values()), set(all_new.values())
 
+def get_unmatched_album_sets_for_newer() -> tuple[list[matching.MatchDecision], list[Album], list[Album]]:
+    decs = _unpickle(app.PATH_PICKLE_DECISIONS, [])
+    lib_old, lib_new = get_libraries()
+    all_old, all_new = lib_old.albums.copy(), lib_new.albums.copy()
+
+    for dec in decs:
+        match dec.state:
+            case matching.MatchState.MATCHED:
+                del all_old[dec.old.path]
+                del all_new[dec.new.path]
+
+    return decs, set(all_old.values()), set(all_new.values())
+
 def get_unmatched_album_sets() -> tuple[list[matching.MatchDecision], list[Album], list[Album]]:
     decs = _unpickle(app.PATH_PICKLE_DECISIONS, [])
     lib_old, lib_new = get_libraries()
@@ -199,24 +217,38 @@ def get_unknown_album_sets() -> tuple[list[matching.MatchDecision], list[Album],
     for dec in decs:
         match dec.state:
             case matching.MatchState.MATCHED:
-                del all_old[dec.old.path]
-
-                # Possible for multiple olds to be covered by one new
-                if dec.new.path in all_new:
+                try:
+                    del all_old[dec.old.path]
+                except:
+                    pass
+                
+                try:
                     del all_new[dec.new.path]
+                except:
+                    pass
 
             case matching.MatchState.PARTIAL:
-                del all_old[dec.old.path]
+                try:
+                    del all_old[dec.old.path]
+                except:
+                    pass
 
-                # Possible for multiple olds to be covered by one new
-                if dec.new.path in all_new:
+                try:
                     del all_new[dec.new.path]
+                except:
+                    pass
 
             case matching.MatchState.UNMATCHED:
-                del all_old[dec.old.path]
+                try:
+                    del all_old[dec.old.path]
+                except:
+                    pass
 
             case matching.MatchState.CONFIRMED_UNMATCHED:
-                del all_old[dec.old.path]
+                try:
+                    del all_old[dec.old.path]
+                except:
+                    pass
 
     return decs, set(all_old.values()), set(all_new.values())
 
@@ -251,7 +283,7 @@ def undo_decision() -> None:
         print('Cancelled')
         return
 
-    opts = list(filter(lambda d: kw in d.present().lower(), decs))
+    opts = list(filter(lambda d: (kw in d.present().lower()) or (kw in str(d.old.path).lower()) or ((d.new is not None) and (kw in str(d.new.path).lower())), decs))
     if not opts:
         print('None found')
         return
@@ -436,12 +468,18 @@ def find_track_escapees() -> None:
         else:
             print('Not overwriting')
 
-    bar = progressbar.ProgressBar()
-    for a in bar(unm):
+    def _task(a: Track) -> None:
         if ow or (str(a.path) not in bests):
             best, score = find_best_match_strict(a, new)
             if best is not None:
                 bests[str(a.path)] = (best, score)
+
+    bar = progressbar.ProgressBar()
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = [executor.submit(_task, t) for t in unm]
+        results = [future.result() for future in concurrent.futures.as_completed(futures)]
+    
+    
 
     print(f'Perhaps {len(bests)} unmatched tracks can be individually matched')
     print(f'Pickling the best options')
@@ -452,7 +490,7 @@ def do_track_escapees() -> None:
     bests = _unpickle(app.PATH_PICKLE_ESCAPEES, {})
     lib_old, lib_new = get_libraries()
 
-    report_progess_escapees(len(bests))
+    report_progess_escapees(len(bests), 0, 0)
 
     print('y = match; n = confirm matchless; e = open folders; q = stop for now; s = save; Enter = no decision.\n')
 
@@ -466,7 +504,7 @@ def do_track_escapees() -> None:
         t = lib_old.tracks[key]
         (best, score) = bests[key]
 
-        p = f'{Track.present_static(t):<80} {Track.present_static(best).present():<80} {score:<.2f} ::: '
+        p = f'{Track.present(t):<80} {Track.present(best):<80} {score:<.2f} ::: '
 
         choice = input(p).upper().strip()
         while (choice) and not (m := re.match(app.RE_UNKNOWN, choice)):
@@ -483,8 +521,8 @@ def do_track_escapees() -> None:
             i += 1
 
         elif choice == 'E':
-            os.startfile(t.album.path)
-            os.startfile(best.album.path)
+            os.startfile(t.path.parent)
+            os.startfile(best.path.parent)
             continue
             
         elif choice == 'N':
@@ -509,6 +547,12 @@ def do_track_escapees() -> None:
     _pickle(bests, app.PATH_PICKLE_ESCAPEES)
     _pickle(decs, app.PATH_PICKLE_DECISIONS)
 
+def check_unknown_all() -> None:
+    check_unknown()
+
+def check_unknown_newer() -> None:
+    check_unknown(newer_only=True)
+
 def check_unmatched() -> None:
     decs, unm, new = get_unmatched_album_sets()
     report_progess_unmatched(len(unm))
@@ -524,6 +568,7 @@ def check_unmatched() -> None:
         print(a.present())
 
         best = find_best_matches(a, new)
+        
         for (n, pair) in enumerate(best):
             score, option = pair
             print(f'\t{n + 1:>2}.   {score:<.2f} : {option.present()}')
@@ -574,8 +619,13 @@ def check_unmatched() -> None:
     report_progess_unmatched(len(unm) - n_decided)
     _pickle(decs, app.PATH_PICKLE_DECISIONS)
 
-def do_unknown_matches() -> None:    
-    decs, old, new = get_unknown_album_sets()
+def check_unknown(newer_only: bool=False) -> None:
+    
+    if newer_only:
+        decs, old, new = get_unmatched_album_sets_for_newer()
+    else:
+        decs, old, new = get_unknown_album_sets()
+
     report_progress_unknown(len(decs), len(old), len(new))
 
     print('y = match; n = matchless; e = open folders; q = stop for now; s = save; Enter = no decision.\n')
@@ -587,7 +637,20 @@ def do_unknown_matches() -> None:
     while i < len(old):
         a = old[i]
 
-        b, score, _ = find_best_match(a, new)
+        if newer_only:
+            newest_ts = 0
+            for dec in decs:
+                if dec.old == a:
+                    if dec.ts_made > newest_ts:
+                        newest_ts = dec.ts_made
+
+            b, score, _ = find_best_match(a, new, newer_only=True, newest_ts=newest_ts)
+        else:
+            b, score, _ = find_best_match(a, new)
+
+        if b is None:
+            i += 1
+            continue
 
         if score >= app.THRESHOLD_CONFIDENT:
             p_word = 'CONFIDENT!!'
@@ -643,7 +706,8 @@ def quit():
 def run():
     choices = [
         quit,
-        do_unknown_matches,
+        check_unknown_all,
+        check_unknown_newer,
         check_unmatched,
         find_track_escapees,
         do_track_escapees,

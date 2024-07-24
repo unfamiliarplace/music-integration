@@ -52,10 +52,18 @@ class MatchDecision:
         return MatchDecision(d.old, d.new, d.state, d.score, d.ts_made, omit2)
 
     def present(self: MatchDecision) -> str:
-        second_part = ''
-        if self.new is not None:
-            second_part = f' vs {self.new.present():<80}'
-        return f'{self.old.present():<80}{second_part}'
+        # So hackish
+
+        try:
+            second_part = ''
+            if self.new is not None:
+                second_part = f' vs {self.new.present():<80}'
+            return f'{self.old.present():<80}{second_part}'
+        except:
+            second_part = ''
+            if self.new is not None:
+                second_part = f' vs {str(self.new):<80}'
+            return f'{str(self.old):<80}{second_part}'
 
     def __str__(self: MatchDecision) -> str:
 
@@ -63,13 +71,16 @@ class MatchDecision:
             return f'{self.old.present():<80} x has no match (unconfirmed)'
 
         if self.state is MatchState.CONFIRMED_UNMATCHED:
-            return f'{self.old.present():<80} x has no match (confirmed)'
+            return f'{self.old.present():<80} X has no match (confirmed)'
         
         elif self.state is MatchState.MATCHED:
             return f'{self.old.present():<80} = {self.new.present():<80}'
         
+        elif self.state is MatchState.PARTIAL:
+            return f'{self.old.present():<80} ~ {self.new.present():<80}'
+        
         else:
-            return f'{self.old.present():<80} ? unknown or partial match'
+            return f'{self.old.present():<80} ? unknown match'
 
 def measure_similarity(m1: Matchable, m2: Matchable) -> tuple[tuple[float], int]:
     stats = []

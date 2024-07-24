@@ -177,9 +177,8 @@ class Track(Matchable):
 
         return Track(path, data, ts=ts)
     
-    @staticmethod
-    def present_static(t: Track) -> str:
-        return f'{t.data['albumartist']} : {t.path.stem}'
+    def present(self: Track) -> str:
+        return f'{self.data['albumartist']} : {self.path.stem}'
     
     def get_siblings(self: Track, include_self: bool=True) -> set[Track]:
         siblings = set(self.album.tracks.values())
