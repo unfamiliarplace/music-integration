@@ -23,7 +23,7 @@ class App:
     PATH_CONFIG: Path = Path('src/config.ini')
 
     RE_UNKNOWN = r'Y|N|E|Q|S'
-    RE_UNMATCHED = r'(N)|(M \d+)|(E \d+)|(Q)|(S)'
+    RE_UNMATCHED = r'(N)|(M)|(E)|(E \d+)|(Q)|(S)'
     RE_COMPARE = r'K|R|M|X|N'
     
     # Configurables
@@ -140,11 +140,11 @@ def get_unmatched_album_sets() -> tuple[list[matching.MatchDecision], list[Album
         match dec.state:
             case matching.MatchState.MATCHED:
                 del all_old[dec.old.path]
-                del all_new[dec.new.path]
+                # del all_new[dec.new.path]
 
             case matching.MatchState.PARTIAL:
                 del all_old[dec.old.path]
-                del all_new[dec.new.path]
+                # del all_new[dec.new.path]
 
             case matching.MatchState.UNKNOWN:
                 del all_old[dec.old.path]
@@ -392,6 +392,9 @@ def check_unmatched() -> None:
 
             n_decided += 1
             i += 1
+
+        elif choice == 'E':
+            os.startfile(a.path)
 
         elif choice.startswith('E'):
             n = int(choice.split()[1])
