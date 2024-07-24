@@ -8,6 +8,7 @@ from tools import _pickle, _unpickle
 import tools
 from tabulate import tabulate
 import re
+import progressbar
 
 # God app :')
 
@@ -37,6 +38,8 @@ class App:
     PATH_PICKLE_DECISIONS: Path
     PATH_PICKLE_DECISIONS_BACKUP: Path
 
+    PATH_PICKLE_ESCAPEES: Path
+
     def load_configuration(self: App) -> None:
 
         with open(self.PATH_CONFIG, 'r') as f:
@@ -60,6 +63,7 @@ class App:
         self.PATH_PICKLE_LIB_NEW = Path(f'{self.PATH_PICKLES}/lib_new.pickle')
         self.PATH_PICKLE_DECISIONS = Path(f'{self.PATH_PICKLES}/decisions.pickle')
         self.PATH_PICKLE_DECISIONS_BACKUP = Path(f'{self.PATH_PICKLES}/decisions_backup.pickle')
+        self.PATH_PICKLE_ESCAPEES = Path(f'{self.PATH_PICKLES}/escapees.pickle')
 
 #  Functions
 
@@ -92,6 +96,19 @@ def get_libraries_dev() -> tuple[Library]:
     new = _get_library(app.PATH_LIB_NEW)
 
     return old, new
+
+def find_best_match_strict(a: matching.Matchable, pool: list[matching.Matchable]) -> tuple[matching.Matchable, float]:
+    best = None
+    best_score = 0.0
+
+    for b in pool:
+        score, _, _ = matching.score_similarity(a, b)
+
+        if score >= app.THRESHOLD_CONFIDENT:
+            best = b
+            best_score = score
+
+    return best, best_score
 
 def find_best_match(a: matching.Matchable, pool: list[matching.Matchable], allow_unlikely: bool=True) -> tuple[matching.Matchable, float, bool]:
     best = None
@@ -146,16 +163,8 @@ def get_unmatched_track_sets() -> tuple[list[matching.MatchDecision], list[Track
 
             case matching.MatchState.PARTIAL:
                 for key in dec.old.tracks:
-                    pass
-
-                del all_old[dec.old.path]
-                # del all_new[dec.new.path]
-
-            case matching.MatchState.UNKNOWN:
-                del all_old[dec.old.path]
-
-            case matching.MatchState.CONFIRMED_UNMATCHED:
-                del all_old[dec.old.path]
+                    if key not in dec.omit:
+                        del all_old[key]
 
     return decs, set(all_old.values()), set(all_new.values())
 
@@ -223,6 +232,13 @@ def report_progess_unmatched(n_unm: int) -> None:
     print(f'Old albums unmatched but not confirmed: {n_unm}')
     print()
 
+def report_progess_escapees(n_unm: int, n_c_unmatched: int, n_matched: int) -> None:
+    print()
+    print(f'Unmatched tracks with alternatives worth considering: {n_unm}')
+    print(f'Matches made among those: {n_matched}')
+    print(f'Unmatches confirmed among those: {n_c_unmatched}')
+    print()
+
 def print_decisions() -> None:
     decs = _unpickle(app.PATH_PICKLE_DECISIONS, [])
     for dec in decs:
@@ -233,7 +249,7 @@ def undo_decision() -> None:
     kw = prompts.p_str('Enter a keyword to search for', allow_blank=True).lower().strip()
     if not kw:
         print('Cancelled')
-        return        
+        return
 
     opts = list(filter(lambda d: kw in d.present().lower(), decs))
     if not opts:
@@ -408,8 +424,90 @@ def compare_albums(a: Album, b: Album) -> tuple[matching.MatchState, list[Track]
         elif choice == 'X':
             return matching.MatchState.UNKNOWN, []
         
+def find_track_escapees() -> None:
+    _, unm, new = get_unmatched_track_sets()
+    bests = _unpickle(app.PATH_PICKLE_ESCAPEES, {})
+
+    ow = False
+    if bests:
+        ow = prompts.p_bool('Overwrite existing bests')
+        if ow:
+            print('Overwriting')
+        else:
+            print('Not overwriting')
+
+    bar = progressbar.ProgressBar()
+    for a in bar(unm):
+        if ow or (str(a.path) not in bests):
+            best, score = find_best_match_strict(a, new)
+            if best is not None:
+                bests[str(a.path)] = (best, score)
+
+    print(f'Perhaps {len(bests)} unmatched tracks can be individually matched')
+    print(f'Pickling the best options')
+    _pickle(bests, app.PATH_PICKLE_ESCAPEES)
+        
 def do_track_escapees() -> None:
-    pass
+    decs = _unpickle(app.PATH_PICKLE_DECISIONS, [])
+    bests = _unpickle(app.PATH_PICKLE_ESCAPEES, {})
+    lib_old, lib_new = get_libraries()
+
+    report_progess_escapees(len(bests))
+
+    print('y = match; n = confirm matchless; e = open folders; q = stop for now; s = save; Enter = no decision.\n')
+
+    keys = list(bests)
+    n_matched = 0
+    n_c_unmatched = 0
+
+    i = 0
+    while i < len(keys):
+        key = keys[i]
+        t = lib_old.tracks[key]
+        (best, score) = bests[key]
+
+        p = f'{Track.present_static(t):<80} {Track.present_static(best).present():<80} {score:<.2f} ::: '
+
+        choice = input(p).upper().strip()
+        while (choice) and not (m := re.match(app.RE_UNKNOWN, choice)):
+            print('\nUnrecognized decision.')
+            choice = input(p).upper().strip()
+        
+        choice = m.group(0)
+
+        if choice == 'Y':
+            decs.append(matching.MatchDecision(t, best, matching.MatchState.MATCHED, score, tools.ts_now()))
+            del bests[key]
+
+            n_matched += 1
+            i += 1
+
+        elif choice == 'E':
+            os.startfile(t.album.path)
+            os.startfile(best.album.path)
+            continue
+            
+        elif choice == 'N':
+            decs.append(matching.MatchDecision(t, best, matching.MatchState.CONFIRMED_UNMATCHED, score, tools.ts_now()))
+            del bests[key]
+
+            n_c_unmatched += 1
+            i += 1
+
+        elif choice == 'S':
+            report_progess_escapees(len(bests), n_c_unmatched, n_matched)
+            _pickle(decs, app.PATH_PICKLE_DECISIONS)
+            _pickle(bests, app.PATH_PICKLE_ESCAPEES)
+            continue
+        
+        elif choice == 'Q':
+            break
+
+        i += 1
+    
+    report_progess_escapees(len(bests), n_c_unmatched, n_matched)
+    _pickle(bests, app.PATH_PICKLE_ESCAPEES)
+    _pickle(decs, app.PATH_PICKLE_DECISIONS)
 
 def check_unmatched() -> None:
     decs, unm, new = get_unmatched_album_sets()
@@ -547,6 +645,8 @@ def run():
         quit,
         do_unknown_matches,
         check_unmatched,
+        find_track_escapees,
+        do_track_escapees,
         print_decisions,
         undo_decision,
         update_decs_version,
