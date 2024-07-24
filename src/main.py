@@ -7,6 +7,7 @@ import os
 from tools import _pickle, _unpickle
 import tools
 from tabulate import tabulate
+import re
 
 # God app :')
 
@@ -21,9 +22,13 @@ class App:
 
     PATH_CONFIG: Path = Path('src/config.ini')
 
+    RE_UNKNOWN = r'Y|N|E|Q|S'
+    RE_UNMATCHED = r'(N)|(M \d+)|(E \d+)|(Q)|(S)'
+
     # Configurables
     PATH_LIB_OLD: Path
     PATH_LIB_NEW: Path
+    PATH_LIB_CULL: Path
     PATH_PICKLES: Path
 
     PATH_PICKLE_LIB_OLD: Path
@@ -40,6 +45,8 @@ class App:
                     self.PATH_LIB_OLD = Path(v)
                 elif k == 'BASE_NEW':
                     self.PATH_LIB_NEW = Path(v)
+                elif k == 'BASE_CULL':
+                    self.PATH_LIB_CULL = Path(v)
                 elif k == 'BASE_PICKLES':
                     self.PATH_PICKLES = Path(v)
 
@@ -104,6 +111,48 @@ def find_best_match(a: matching.Matchable, pool: list[matching.Matchable], allow
 
     return best, best_score, satisfied
 
+def find_best_matches(a: matching.Matchable, pool: list[matching.Matchable], n: int=10) -> tuple[matching.Matchable, float]:
+    options = {}
+
+    for b in pool:
+        score, _, _ = matching.score_similarity(a, b)
+        if score not in options:
+            options[score] = []
+
+        options[score].append(b)
+
+    best = sorted(options, reverse=True)
+    results = []
+
+    for score in best[:n]:
+        for o in options[score]:
+            results.append((score, o))
+    
+    return results
+
+def get_unmatched_album_sets() -> tuple[list[matching.MatchDecision], list[Album], list[Album]]:
+    decs = _unpickle(app.PATH_PICKLE_DECISIONS, [])
+    lib_old, lib_new = get_libraries()
+    all_old, all_new = lib_old.albums.copy(), lib_new.albums.copy()
+
+    for dec in decs:
+        match dec.state:
+            case matching.MatchState.MATCHED:
+                del all_old[dec.old.path]
+                del all_new[dec.new.path]
+
+            case matching.MatchState.PARTIAL:
+                del all_old[dec.old.path]
+                del all_new[dec.new.path]
+
+            case matching.MatchState.UNKNOWN:
+                del all_old[dec.old.path]
+
+            case matching.MatchState.CONFIRMED_UNMATCHED:
+                del all_old[dec.old.path]
+
+    return decs, set(all_old.values()), set(all_new.values())
+
 def get_unknown_album_sets() -> tuple[list[matching.MatchDecision], list[Album], list[Album]]:
     decs = _unpickle(app.PATH_PICKLE_DECISIONS, [])
     lib_old, lib_new = get_libraries()
@@ -124,11 +173,16 @@ def get_unknown_album_sets() -> tuple[list[matching.MatchDecision], list[Album],
 
     return decs, set(all_old.values()), set(all_new.values())
 
-def report_progress(n_dec: int, n_old: int, n_new: int) -> None:
+def report_progress_unknown(n_dec: int, n_old: int, n_new: int) -> None:
     print()
     print(f'Decisions made:       {n_dec}')
     print(f'Old albums undecided: {n_old}')
     print(f'New albums eligible:  {n_new}')
+    print()
+
+def report_progess_unmatched(n_unm: int) -> None:
+    print()
+    print(f'Old albums unmatched but not confirmed: {n_unm}')
     print()
 
 def print_decisions() -> None:
@@ -167,8 +221,7 @@ def fix_decs() -> None:
     decs = _unpickle(app.PATH_PICKLE_DECISIONS, [])
     news = []
     for d in decs:
-        d2 = matching.MatchDecision(d.old, d.new, d.state, d.score, ts=d.ts_made, omit=[])
-        news.append(d2)
+        news.append(matching.MatchDecision.remake(d))
     _pickle(news, app.PATH_PICKLE_DECISIONS)
 
 def format_track_comparison_row(a: Track, b: Track, score: float) -> list[str]:
@@ -293,17 +346,85 @@ def compare_albums(a: Album, b: Album) -> tuple[matching.MatchState, list[Track]
         elif choice == 'X':
             return matching.MatchState.UNKNOWN, []
 
-def do_matches() -> None:
+def check_unmatched() -> None:
+    decs, unm, new = get_unmatched_album_sets()
+    report_progess_unmatched(len(unm))
+
+    print('n = confirm no match; m # = matched after all; e # = open folders; q = stop for now; s = save; Enter = remove decision.\n')
+
+    unm = list(unm)
+    n_decided = 0
+
+    i = 0
+    while i < len(unm):
+        a = unm[i]
+        print(a.present())
+
+        best = find_best_matches(a, new)
+        for (i, pair) in enumerate(best):
+            score, option = pair
+            print(f'\t{i + 1:>2}.   {score:<.2f} : {option.present()}')
+        print()
+        
+        p = 'Decision: '
+        choice = input(p).upper().strip()
+        while (choice) and not (m := re.match(app.RE_UNMATCHED, choice)):
+            print('\nUnrecognized decision.')
+            choice = input(p).upper().strip()
+
+        choice = m.group(0)
+
+        if choice.startswith('M'):
+            n = int(choice.split()[1])
+            b = best[n - 1][1]
+
+            state, unmatched_tracks = compare_albums(a, b)
+            decs.append(matching.MatchDecision(a, b, state, score, tools.ts_now()), omit=unmatched_tracks[:])
+            new.remove(b)
+            print(f'Marked as matched with {b.present()}')
+            print()
+
+            n_decided += 1
+            i += 1
+
+        elif choice.startswith('E'):
+            n = int(choice.split()[1])
+            b = best[n - 1][1]
+            os.startfile(a.path)
+            os.startfile(b.path)
+            continue
+            
+        elif choice == 'N':
+            decs.append(matching.MatchDecision(a, None, matching.MatchState.CONFIRMED_UNMATCHED, score, tools.ts_now()))
+            print(f'Marked as confirmed unmatched')
+            print()
+
+            n_decided += 1
+            i += 1
+
+        elif choice == 'S':
+            report_progess_unmatched(len(unm) - n_decided)
+            _pickle(decs, app.PATH_PICKLE_DECISIONS)
+            continue
+        
+        elif choice == 'Q':
+            report_progess_unmatched(len(unm) - n_decided)
+            _pickle(decs, app.PATH_PICKLE_DECISIONS)
+            break
+
+def do_unknown_matches() -> None:    
     decs, old, new = get_unknown_album_sets()
-    old = list(old)
-    report_progress(len(decs), len(old), len(new))
+    report_progress_unknown(len(decs), len(old), len(new))
 
     print('y = match; n = matchless; e = open folders; q = stop for now; s = save; Enter = no decision.\n')
-
+ 
+    old = list(old)
     n_matched = 0
-    i = 0
+
+    i = 0    
     while i < len(old):
         a = old[i]
+
         b, score, _ = find_best_match(a, new)
 
         if score >= app.THRESHOLD_CONFIDENT:
@@ -316,23 +437,20 @@ def do_matches() -> None:
         p = f'{a.present():<80} {b.present():<80} {p_word} {score:<.2f} ::: '
 
         choice = input(p).upper().strip()
-        while choice not in {'Y', '', 'N', 'E', 'Q', 'S'}:
+        while (choice) and not (m := re.match(app.RE_UNKNOWN, choice)):
             print('\nUnrecognized decision.')
             choice = input(p).upper().strip()
+        
+        choice = m.group(0)
 
         if choice == 'Y':
-
             state, unmatched_tracks = compare_albums(a, b)
-            match state:
-                case matching.MatchState.MATCHED:
-                    decs.append(matching.MatchDecision(a, b, matching.MatchState.MATCHED, score, tools.ts_now()))
-                    new.remove(b)
-                    n_matched += 1
 
-                case matching.MatchState.PARTIAL:
-                    decs.append(matching.MatchDecision(a, b, matching.MatchState.PARTIAL, score, tools.ts_now(), omit=unmatched_tracks[:]))
-                    new.remove(b)
-                    n_matched += 1
+            decs.append(matching.MatchDecision(a, b, state, score, tools.ts_now()), omit=unmatched_tracks[:])
+            new.remove(b)
+
+            n_matched += 1
+            i += 1
 
         elif choice == 'E':
             os.startfile(a.path)
@@ -341,19 +459,17 @@ def do_matches() -> None:
             
         elif choice == 'N':
             decs.append(matching.MatchDecision(a, b, matching.MatchState.UNMATCHED, score, tools.ts_now()))
+            i += 1
 
         elif choice == 'S':
-            report_progress(len(decs), len(old) - n_matched, len(new))
+            report_progress_unknown(len(decs), len(old) - n_matched, len(new))
             _pickle(decs, app.PATH_PICKLE_DECISIONS)
             continue
         
         elif choice == 'Q':
+            report_progress_unknown(len(decs), len(old) - n_matched, len(new))
+            _pickle(decs, app.PATH_PICKLE_DECISIONS)
             break
-
-        i += 1
-
-    report_progress(len(decs), len(old) - n_matched, len(new))
-    _pickle(decs, app.PATH_PICKLE_DECISIONS)
 
 def retry_unmatched() -> None:
     print('Not implemented yet')
@@ -364,17 +480,11 @@ def quit():
 def run():
     choices = [
         quit,
-        do_matches,
+        do_unknown_matches,
+        check_unmatched,
         print_decisions,
         undo_decision,
-        # fix_decs
-        # update_matches,
-        # manually_vet_matches,
-        # manually_vet_matches_fast,
-        # clean_matches,
-        # worst_matches,
-        # update_match_version,
-        # manually_remove_match
+        fix_decs,
     ]
 
     program = prompts.p_choice('Choose program', [c.__name__ for c in choices], allow_blank=True)

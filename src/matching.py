@@ -9,6 +9,7 @@ class MatchState(Enum):
     MATCHED = 1
     PARTIAL = 2
     UNMATCHED = 3
+    CONFIRMED_UNMATCHED = 4
 
 class Matchable:
     data: dict[str, object]
@@ -32,13 +33,23 @@ class MatchDecision:
         self.ts_made = ts
         self.omit = omit
 
+    @staticmethod
+    def remake(d: MatchDecision) -> MatchDecision:
+        return MatchDecision(d.old, d.new, d.state, d.score, d.ts_made, d.omit)
+
     def present(self: MatchDecision) -> str:
-        return f'{self.old.present():<80} vs {self.new.present():<80}'
+        second_part = ''
+        if self.new is not None:
+            second_part = f' vs {self.new.present():<80}'
+        return f'{self.old.present():<80}{second_part}'
 
     def __str__(self: MatchDecision) -> str:
 
         if self.state is MatchState.UNMATCHED:
-            return f'{self.old.present():<80} x has no match'
+            return f'{self.old.present():<80} x has no match (unconfirmed)'
+
+        if self.state is MatchState.CONFIRMED_UNMATCHED:
+            return f'{self.old.present():<80} x has no match (confirmed)'
         
         elif self.state is MatchState.MATCHED:
             return f'{self.old.present():<80} = {self.new.present():<80}'
