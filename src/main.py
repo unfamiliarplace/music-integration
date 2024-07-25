@@ -1,15 +1,15 @@
 from __future__ import annotations
 from pathlib import Path
-from library import Album, Library, Track
+from library import Album, Library, Track, EXTS
 import matching
 import prompts
 import os
+import shutil
 from tools import _pickle, _unpickle
 import tools
 from tabulate import tabulate
 import re
 import progressbar
-import concurrent.futures
 
 # God app :')
 
@@ -490,18 +490,12 @@ def find_track_escapees() -> None:
         else:
             print('Not overwriting')
 
-    def _task(a: Track) -> None:
+    bar = progressbar.ProgressBar()
+    for a in bar(unm):
         if ow or (str(a.path) not in bests):
             best, score = find_best_match_strict(a, new)
             if best is not None:
                 bests[str(a.path)] = (best, score)
-
-    bar = progressbar.ProgressBar()
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        futures = [executor.submit(_task, t) for t in unm]
-        results = [future.result() for future in concurrent.futures.as_completed(futures)]
-    
-    
 
     print(f'Perhaps {len(bests)} unmatched tracks can be individually matched')
     print(f'Pickling the best options')
@@ -724,8 +718,64 @@ def check_unknown(newer_only: bool=False) -> None:
     report_progress_unknown(len(decs), len(old) - n_matched, len(new))
     _pickle(decs, app.PATH_PICKLE_DECISIONS)
 
-def retry_unmatched() -> None:
-    print('Not implemented yet')
+def rebase_path(path: Path) -> Path:
+    parts = list(path.parts)
+    for part in app.PATH_LIB_OLD.parts:
+        parts.remove(part)
+    path = app.PATH_LIB_CULL / Path(*parts)
+    return path
+
+def get_unmatched_paths() -> set[Path]:
+    decs = _unpickle(app.PATH_PICKLE_DECISIONS, [])
+    paths = set()
+
+    for dec in decs: 
+        if dec.state is matching.MatchState.PARTIAL:
+            for (key, t) in dec.old.tracks.items():
+                if key not in dec.omit:
+                    paths.add(t.path)
+
+        elif dec.state is matching.MatchState.CONFIRMED_UNMATCHED:
+            if isinstance(dec.old, Album):
+                for t in dec.old.tracks.values():
+                    paths.add(t.path)
+
+            elif isinstance(dec.old, Track):
+                paths.add(dec.old.path)
+
+    return paths
+
+def sync_cull() -> None:
+    are = tools.get_filepaths(app.PATH_LIB_CULL, EXTS)
+    should_be = get_unmatched_paths()
+
+    source_target = {p: rebase_path(p) for p in should_be}
+    target_source = {v: k for (k, v) in source_target.items()}
+
+    targets = set(target_source)
+
+    to_remove = are.difference(targets)
+    if not to_remove:
+        print('No files to remove from the cull')
+    else:
+        print(f'Removing {len(to_remove)} files that should not be in the cull...')
+        bar = progressbar.ProgressBar()
+        for found in bar(to_remove):
+            # print(f'Would be removing {found}')
+            os.remove(found)
+
+    to_copy = targets.difference(are)
+    if not to_copy:
+        print('No files to add to the cull')
+    else:
+        print(f'Adding {len(to_copy)} files that should be in the cull...')
+        bar = progressbar.ProgressBar()
+        for target in bar(to_copy):
+            source = target_source[target]
+            # print(f'Would be copying {source} to {target}')
+            if not Path.exists(target.parent):
+                Path.mkdir(target.parent, parents=True, exist_ok=True)
+            shutil.copy2(source, target.parent)
 
 def quit():
     exit() # LOL. (Why? So it can be a function object with a __name__)
@@ -741,7 +791,8 @@ def run():
         print_decisions,
         undo_decision,
         update_decs_version,
-        delete_outdated_decs
+        delete_outdated_decs,
+        sync_cull
     ]
 
     program = prompts.p_choice('Choose program', [c.__name__ for c in choices], allow_blank=True)
